@@ -1,9 +1,16 @@
-from flask import Flask, request, render_template_string, session
-import requests
-import json
-import os
-import time
-from datetime import timedelta
+from flask import Flask
+import os  # <-- 這行必須要有！
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "Hello! My AI Tutor is working!"
+
+if __name__ == '__main__':
+    # ！！！最重要的修改在這裡！！！
+    port = int(os.environ.get('PORT', 5000))  # 從環境變數讀取PORT，沒有則用5000
+    app.run(host='0.0.0.0', port=port)        # host必須是 '0.0.0.0'
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # 隨機生成密鑰
@@ -385,4 +392,5 @@ if __name__ == '__main__':
     print("⏹️ 按 Ctrl+C 可停止服務")
     print("🔒 建議設置環境變數: export DEEPSEEK_API_KEY=您的金鑰")
     print("💡 現在支援更好的數學圖形顯示！")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
