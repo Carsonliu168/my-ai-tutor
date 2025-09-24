@@ -8,7 +8,15 @@ app.secret_key = os.urandom(24)
 app.permanent_session_lifetime = timedelta(hours=2)
 
 # ====== API 設定 ======
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "你的預設APIKEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+
+if not DEEPSEEK_API_KEY:
+    # fallback，避免 Railway 沒吃到變數
+    DEEPSEEK_API_KEY = "sk-2fde4862ca7e43548fe23f4aed4076d5"
+    print("⚠️ 環境變數沒讀到，改用寫死的 key")
+else:
+    print("✅ 成功讀到環境變數")
+
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # ====== DeepSeek 問答函數 ======
@@ -43,18 +51,12 @@ def ask_deepseek(user_message, conversation_history):
         if "choices" in result and len(result["choices"]) > 0:
             raw_response = result["choices"][0]["message"]["content"]
             formatted_response = raw_response.replace('- ', '• ')
-            simplified_to_traditional = {
-                '质因数': '質因數', '约数': '因數', '这个': '這個',
-                '个体': '個體', '数量': '數量', '问题': '問題',
-                '计算': '計算', '答案': '答案', '结果': '結果'
-            }
-            for simp, trad in simplified_to_traditional.items():
-                formatted_response = formatted_response.replace(simp, trad)
             return formatted_response
         else:
-            return "安安正在思考中..."
-    except:
-        return "安安正在思考中..."
+            return "安安好像沒聽懂，可以換個方式問嗎？"
+    except Exception as e:
+        print("❌ API 錯誤:", str(e))
+        return f"安安出現錯誤：{str(e)}"
 
 # ====== 主頁 ======
 @app.route('/', methods=['GET', 'POST'])
