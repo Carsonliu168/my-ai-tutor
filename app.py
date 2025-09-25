@@ -97,4 +97,101 @@ def ask_deepseek(user_message: str, conversation_history: list) -> str:
         "2. 不直接給完整解答，要先引導學生思考下一步，並提出提示或問題。\n"
         "3. 逐步拆解題目，讓學生一步一步回答。\n"
         "4. 使用台灣常用的數學術語。\n"
-        "5. 語氣要親切、鼓勵，像一位耐心的小
+        "5. 語氣要親切、鼓勵，像一位耐心的小老師。\n"
+        "6. 如果需要舉例說明，請使用台灣常見的食物或生活物品（例如：珍珠奶茶、蔥油餅、滷肉飯、刈包、雞排）。\n"
+        "7. 如果學生多次回答不出來，再給更多提示，最後才提供完整解答。\n"
+        "8. 在完整解答結束後，請再出一題同樣概念的練習題，鼓勵學生自己嘗試。\n"
+        "9. 如果學生的問題與數學學習無關（閒聊、歌曲、娛樂等），請用簡短幽默可愛的方式回答，並引導學生回到數學學習主題。"
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in conversation_history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            content = str(content)
+        messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_message})
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 1500,
+    }
+
+    try:
+        resp = session_req.post(
+            DEEPSEEK_API_URL,
+            headers=headers,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            timeout=DEFAULT_TIMEOUT,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+
+        if "choices" in result and result["choices"]:
+            raw = result["choices"][0]["message"]["content"]
+
+            # 後處理：清理常見 LaTeX 符號
+            latex_map = {
+                "\\times": "×",
+                "\\cdot": "×",
+                "\\div": "÷",
+                "\\(": "",
+                "\\)": "",
+                "$": "",
+            }
+            formatted = raw
+            for k, v in latex_map.items():
+                formatted = formatted.replace(k, v)
+            formatted = formatted.replace("• ", "")
+
+            return formatted.strip() or "（空回應）"
+        else:
+            logger.warning("DeepSeek 回傳內容無 choices：%s", result)
+            return "安安好像沒聽懂，可以換個方式問嗎？"
+
+    except requests.exceptions.RequestException as e:
+        logger.exception("❌ 與 DeepSeek 通訊發生錯誤：%s", e)
+        return "安安連線出了一點小狀況，稍後再試或換個題目吧！"
+    except Exception as e:
+        logger.exception("❌ 未預期錯誤：%s", e)
+        return "安安暫時肚子餓了（系統小故障），等一下再來問我～"
+
+# ====== 首頁 ======
+@app.route("/", methods=["GET", "POST"])
+def home():
+    if "conversation" not in session or not isinstance(session["conversation"], list):
+        session["conversation"] = [
+            {"role": "assistant", "content": "我是安安，你的數學小老師"}
+        ]
+
+    if request.method == "POST":
+        user_message = (request.form.get("message") or "").strip()
+        if user_message:
+            session["conversation"].append({"role": "user", "content": user_message})
+            ai_reply = ask_deepseek(user_message, session["conversation"])
+            session["conversation"].append({"role": "assistant", "content": ai_reply})
+            session.modified = True
+
+    return render_template(
+        "index.html",
+        conversation=session["conversation"],
+        app_version=APP_VERSION,
+    )
+
+# ====== 清除對話 ======
+@app.route("/clear")
+def clear_conversation():
+    session["conversation"] = [
+        {"role": "assistant", "content": "對話已清除，從頭開始吧！"}
+    ]
+    session.modified = True
+    return redirect(url_for("home"))
+
+# ====== 本地啟動（Railway 由 gunicorn 啟動，不會走到這裡） ======
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5000"))
+    logger.info("🚀 %s 本地模式啟動，http://0.0.0.0:%d", APP_VERSION, port)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG)
