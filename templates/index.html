@@ -4,11 +4,10 @@
     <title>數學小老師安安</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         body { font-family: Microsoft JhengHei, Arial; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; line-height: 1.5; }
-        .header { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+        .header { text-align: center; color: #2c3e50; margin-bottom: 10px; }
+        .version { text-align: center; font-size: 13px; color: gray; margin-bottom: 20px; }
         .chat-container { background: white; border: 2px solid #dee2e6; border-radius: 10px; padding: 15px; height: 500px; overflow-y: auto; margin: 20px 0; }
         .message { margin: 10px 0; max-width: 80%; padding: 10px 15px; border-radius: 15px; position: relative; }
         .user { background: #d1ecf1; color: #0c5460; margin-left: auto; margin-right: 10px; text-align: left; border-bottom-right-radius: 3px; }
@@ -24,6 +23,8 @@
 </head>
 <body>
     <div class="header"><h1>數學小老師安安</h1></div>
+    <div class="version">{{ app_version }}</div>
+
     <div class="chat-container" id="chatContainer">
         {% for msg in conversation %}
             <div class="message {{ 'user' if msg.role == 'user' else 'assistant' }}">
