@@ -146,4 +146,4 @@ if __name__ == "__main__":
         logger.info("🚀 安安 v1.3D 本地模式啟動，http://127.0.0.1:%s | DEBUG=%s", port, DEBUG)
         app.run(host="0.0.0.0", port=port, debug=DEBUG)
     else:
-        logger.info("✅ 應用程式已載入，由 Gunicorn 負責服務")
+        logger.info("✅ 應用程式已載入，由 Gunicorn 負責服務") 
