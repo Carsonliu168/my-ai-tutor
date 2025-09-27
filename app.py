@@ -6,7 +6,7 @@ from typing import List, Dict
 import requests
 from flask import Flask, request, render_template, session, redirect, url_for, make_response
 
-# ---------- 基本設定 ----------
+# ---------- 日誌設定 ----------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -21,7 +21,7 @@ app.permanent_session_lifetime = timedelta(hours=2)
 
 # Railway 環境設定
 app.config.update(
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=False,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax'
 )
@@ -32,10 +32,14 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = "deepseek-chat"
 TIMEOUT = 30
 
+# 顯示端口資訊
+PORT = os.environ.get("PORT")
+logger.info("PORT environment variable: %s", PORT)
+
 if DEEPSEEK_API_KEY:
-    logger.info("✅ 成功讀到 DEEPSEEK_API_KEY | 安安 v1.3D，DEBUG=%s", DEBUG)
+    logger.info("Successfully loaded DEEPSEEK_API_KEY | DEBUG=%s", DEBUG)
 else:
-    logger.warning("⚠️ 沒有讀到 DEEPSEEK_API_KEY，請在本地/部署平台設定環境變數。")
+    logger.warning("DEEPSEEK_API_KEY not found, please set environment variable")
 
 # ---------- 共同常數 ----------
 SYSTEM_PROMPT = """你是數學老師安安，請遵守以下要求：
@@ -44,14 +48,22 @@ SYSTEM_PROMPT = """你是數學老師安安，請遵守以下要求：
 3. 用台灣常用的數學術語
 4. 回答要清晰易懂"""
 
+# ---------- 全域請求日誌 ----------
+@app.before_request
+def _log_request():
+    logger.info("Request: %s %s", request.method, request.path)
+
+@app.after_request
+def _log_response(resp):
+    logger.info("Response: %s %s -> %s", request.method, request.path, resp.status)
+    return resp
+
 # ---------- DeepSeek 呼叫函式 ----------
 def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
     if not DEEPSEEK_API_KEY:
         return "系統尚未設定 DEEPSEEK_API_KEY，請先於環境變數加入後再試一次。"
 
-    # 組訊息：system +（截斷）歷史 + 當前 user
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    # 避免對話過長，取最後 12 則歷史
     for msg in conversation_history[-12:]:
         role = "assistant" if msg.get("role") == "assistant" else "user"
         content = str(msg.get("content", ""))
@@ -71,12 +83,12 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
 
     try:
         if DEBUG:
-            logger.info("🔎 DEBUG 請求 payload=%s", payload)
+            logger.info("DEBUG request payload=%s", payload)
 
         resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=TIMEOUT)
 
         if DEBUG:
-            logger.info("🔎 DEBUG status=%s, body=%s", resp.status_code, resp.text)
+            logger.info("DEBUG response status=%s, body=%s", resp.status_code, resp.text)
 
         resp.raise_for_status()
         data = resp.json()
@@ -94,31 +106,43 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
         elif code == 429:
             return "安安目前太忙（429）。請稍後再試或降低頻率。"
         else:
-            logger.error("❌ DeepSeek HTTP 錯誤：%s | body=%s", e, getattr(e.response, "text", ""))
+            logger.error("DeepSeek HTTP error: %s | body=%s", e, getattr(e.response, "text", ""))
             return f"安安出現錯誤：HTTP {code}，請稍後再試。"
     except requests.RequestException as e:
-        logger.error("❌ DeepSeek 連線例外：%s", e)
+        logger.error("DeepSeek connection error: %s", e)
         return "安安連線出了一點小狀況，請檢查網路或稍後再試。"
     except Exception as e:
-        logger.exception("❌ 非預期錯誤")
+        logger.exception("Unexpected error")
         return f"安安出現錯誤：{e}"
 
 # ---------- 路由 ----------
 @app.route("/", methods=["GET", "POST"])
 def home():
     session.permanent = True
-    if "conversation" not in session:
-        session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師"}]
+    try:
+        if "conversation" not in session:
+            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師"}]
 
-    if request.method == "POST":
-        user_message = (request.form.get("message") or "").strip()
-        if user_message:
-            session["conversation"].append({"role": "user", "content": user_message})
-            ai_response = ask_deepseek(user_message, session["conversation"])
-            session["conversation"].append({"role": "assistant", "content": ai_response})
-            session.modified = True
+        if request.method == "POST":
+            user_message = (request.form.get("message") or "").strip()
+            if user_message:
+                session["conversation"].append({"role": "user", "content": user_message})
+                ai_response = ask_deepseek(user_message, session["conversation"])
+                session["conversation"].append({"role": "assistant", "content": ai_response})
+                session.modified = True
 
-    return render_template("index.html", conversation=session["conversation"])
+        return render_template("index.html", conversation=session["conversation"])
+    except Exception as e:
+        logger.exception("Error in home() function")
+        html = f"""
+        <html><body style="font-family:Arial;max-width:720px;margin:40px auto">
+        <h2>安安已啟動，但首頁模板有點狀況</h2>
+        <p>例外：<code>{e.__class__.__name__}: {e}</code></p>
+        <p>請確認 templates/index.html 是否存在</p>
+        <a href="/healthz">健康檢查</a>
+        </body></html>
+        """
+        return html, 500
 
 @app.route("/clear")
 def clear_conversation():
@@ -129,15 +153,16 @@ def clear_conversation():
 def healthz():
     return "ok", 200
 
+@app.route("/live")
+def live():
+    return "live", 200
+
 @app.route("/favicon.ico")
 def favicon():
     return make_response("", 204)
 
 # ---------- 啟動設定 ----------
 if __name__ == "__main__":
-    if os.getenv("RAILWAY_ENVIRONMENT") is None and os.getenv("RAILWAY_RUN") is None:
-        port = int(os.environ.get("PORT", 5000))
-        logger.info("🚀 安安 v1.3D 本地模式啟動，http://127.0.0.1:%s | DEBUG=%s", port, DEBUG)
-        app.run(host="0.0.0.0", port=port, debug=DEBUG)
-    else:
-        logger.info("✅ 應用程式已載入，由 Gunicorn 負責服務")
+    port = int(os.environ.get("PORT", 8080))
+    logger.info("Starting app on port: %s", port)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG)
