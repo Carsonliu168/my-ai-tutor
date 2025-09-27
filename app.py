@@ -96,4 +96,48 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
         else:
             logger.error("❌ DeepSeek HTTP 錯誤：%s | body=%s", e, getattr(e.response, "text", ""))
             return f"安安出現錯誤：HTTP {code}，請稍後再試。"
-    except requests.Req
+    except requests.RequestException as e:
+        logger.error("❌ DeepSeek 連線例外：%s", e)
+        return "安安連線出了一點小狀況，請檢查網路或稍後再試。"
+    except Exception as e:
+        logger.exception("❌ 非預期錯誤")
+        return f"安安出現錯誤：{e}"
+
+# ---------- 路由 ----------
+@app.route("/", methods=["GET", "POST"])
+def home():
+    session.permanent = True
+    if "conversation" not in session:
+        session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師"}]
+
+    if request.method == "POST":
+        user_message = (request.form.get("message") or "").strip()
+        if user_message:
+            session["conversation"].append({"role": "user", "content": user_message})
+            ai_response = ask_deepseek(user_message, session["conversation"])
+            session["conversation"].append({"role": "assistant", "content": ai_response})
+            session.modified = True
+
+    return render_template("index.html", conversation=session["conversation"])
+
+@app.route("/clear")
+def clear_conversation():
+    session["conversation"] = [{"role": "assistant", "content": "對話已清除，從頭開始吧！"}]
+    return redirect(url_for("home"))
+
+@app.route("/healthz")
+def healthz():
+    return "ok", 200
+
+@app.route("/favicon.ico")
+def favicon():
+    return make_response("", 204)
+
+# ---------- 啟動設定 ----------
+if __name__ == "__main__":
+    if os.getenv("RAILWAY_ENVIRONMENT") is None and os.getenv("RAILWAY_RUN") is None:
+        port = int(os.environ.get("PORT", 5000))
+        logger.info("🚀 安安 v1.3D 本地模式啟動，http://127.0.0.1:%s | DEBUG=%s", port, DEBUG)
+        app.run(host="0.0.0.0", port=port, debug=DEBUG)
+    else:
+        logger.info("✅ 應用程式已載入，由 Gunicorn 負責服務")
