@@ -4,6 +4,9 @@
     <title>數學小老師安安</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
     <style>
         body { font-family: Microsoft JhengHei, Arial; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; line-height: 1.5; }
         .header { text-align: center; color: #2c3e50; margin-bottom: 20px; }
@@ -18,6 +21,24 @@
         button { padding: 12px 25px; background: #e74c3c; color: white; border: none; border-radius: 50px; cursor: pointer; font-size: 16px; }
         .controls { text-align: center; margin-top: 15px; }
         .controls a { color: #3498db; text-decoration: none; margin: 0 15px; }
+        
+        /* KaTeX 數學公式樣式 */
+        .katex { font-size: 1.1em; }
+        .katex-display { margin: 0.5em 0; }
+        
+        /* Markdown 樣式 */
+        .message-content h1, .message-content h2, .message-content h3 { 
+            color: #2c3e50; 
+            margin: 10px 0 5px 0; 
+        }
+        .message-content ul { margin: 5px 0; padding-left: 20px; }
+        .message-content li { margin: 2px 0; }
+        .message-content strong { color: #2c3e50; }
+        .message-content hr { 
+            border: none; 
+            border-top: 1px solid #ddd; 
+            margin: 10px 0; 
+        }
     </style>
 </head>
 <body>
@@ -40,10 +61,31 @@
         <a href="/clear" onclick="return confirm('確定要清除對話嗎？')">清除對話</a>
     </div>
     <script>
+        function renderMath() {
+            if (window.renderMathInElement) {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        {left: "\\[", right: "\\]", display: true},
+                        {left: "$$", right: "$$", display: true},
+                        {left: "\\(", right: "\\)", display: false},
+                        {left: "$", right: "$", display: false}
+                    ]
+                });
+            }
+        }
+        
         window.onload = function() {
             var container = document.getElementById('chatContainer');
             container.scrollTop = container.scrollHeight;
+            
+            // 渲染數學公式
+            setTimeout(renderMath, 500);
         };
+        
+        // 當內容更新時重新渲染
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(renderMath, 1000);
+        });
     </script>
 </body>
 </html>
