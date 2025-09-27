@@ -44,9 +44,17 @@ else:
 # ---------- 共同常數 ----------
 SYSTEM_PROMPT = """你是數學老師安安，請遵守以下要求：
 1. 使用繁體中文回答
-2. 不要使用 - 符號，改用 • 符號或數字編號
-3. 用台灣常用的數學術語
-4. 回答要清晰易懂"""
+2. 數學公式用易讀的文字表示，例如：
+   - 用 "N = 72k + 2" 而不是複雜符號
+   - 用 "N ÷ 6 餘 2" 而不是特殊符號
+   - 用 "根號x" 表示 sqrt(x)，"x的平方" 表示 x²
+   - 用 "分數 a/b" 而不是特殊格式
+3. 使用清晰的分步驟格式
+4. 用 ● 或數字編號來列點
+5. 使用蘇格拉底式教學法：多問引導性問題，讓學生思考
+6. 回答要清晰易懂，避免任何可能顯示錯誤的特殊符號
+7. 重要答案用【答案：xxx】格式標示
+8. 每個步驟都要解釋為什麼這樣做"""
 
 # ---------- 全域請求日誌 ----------
 @app.before_request
@@ -95,7 +103,10 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
 
         if "choices" in data and data["choices"]:
             content = data["choices"][0]["message"]["content"]
-            return content.replace("- ", "• ")
+            # 清理可能有問題的符號
+            content = content.replace("\\", "")
+            content = content.replace("$", "")
+            return content
         else:
             return "安安好像沒聽懂，可以換個方式問嗎？"
 
@@ -121,7 +132,7 @@ def home():
     session.permanent = True
     try:
         if "conversation" not in session:
-            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師"}]
+            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師！我會用簡單易懂的方式教你數學，並且引導你自己思考找到答案。有什麼數學問題想問我嗎？"}]
 
         if request.method == "POST":
             user_message = (request.form.get("message") or "").strip()
@@ -146,7 +157,7 @@ def home():
 
 @app.route("/clear")
 def clear_conversation():
-    session["conversation"] = [{"role": "assistant", "content": "對話已清除，從頭開始吧！"}]
+    session["conversation"] = [{"role": "assistant", "content": "對話已清除！我是安安，你的數學小老師，讓我們重新開始學習數學吧！"}]
     return redirect(url_for("home"))
 
 @app.route("/healthz")
@@ -163,6 +174,6 @@ def favicon():
 
 # ---------- 啟動設定 ----------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 5000))
     logger.info("Starting app on port: %s", port)
     app.run(host="0.0.0.0", port=port, debug=DEBUG)
