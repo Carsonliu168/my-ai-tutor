@@ -21,7 +21,7 @@ app.permanent_session_lifetime = timedelta(hours=2)
 
 # Railway 環境設定
 app.config.update(
-    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_SECURE=False,  # 本地測試設為 False
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax'
 )
@@ -34,35 +34,30 @@ TIMEOUT = 30
 
 # 顯示端口資訊
 PORT = os.environ.get("PORT")
-logger.info("PORT environment variable: %s", PORT)
+logger.info("🔍 環境變數檢查: PORT=%s", PORT)
 
 if DEEPSEEK_API_KEY:
-    logger.info("Successfully loaded DEEPSEEK_API_KEY | DEBUG=%s", DEBUG)
+    logger.info("✅ 成功讀到 DEEPSEEK_API_KEY | 安安 v1.3D，DEBUG=%s", DEBUG)
 else:
-    logger.warning("DEEPSEEK_API_KEY not found, please set environment variable")
+    logger.warning("⚠️ 沒有讀到 DEEPSEEK_API_KEY，請在本地/部署平台設定環境變數。")
 
 # ---------- 共同常數 ----------
-SYSTEM_PROMPT = """你是數學老師安安，請用小學生能理解的方式回答：
-
-1. 使用繁體中文
-2. 數學表達方式：人數除以6等於24餘2
-3. 不使用代數變數，不要用N、k、x等字母
-4. 用具體的數字和簡單的中文說明
-5. 用數字編號1. 2. 3.列步驟
-6. 最終答案：這班有146個學生
-7. 多問引導性問題，讓學生自己思考
-8. 用乾淨簡潔的格式，不使用粗體或特殊標記
-
-記住：要像跟小學生說話一樣簡單明瞭"""
+SYSTEM_PROMPT = """你是數學老師安安，請遵守以下要求：
+1. 使用繁體中文回答
+2. 不要使用 - 符號，改用 • 符號或數字編號
+3. 用台灣常用的數學術語
+4. 回答要清晰易懂
+5. 絕對不要提到「人數除以6等於24餘2」這道題目
+6. 如果學生只是打招呼，就正常回應問候"""
 
 # ---------- 全域請求日誌 ----------
 @app.before_request
 def _log_request():
-    logger.info("Request: %s %s", request.method, request.path)
+    logger.info("➡️ %s %s", request.method, request.path)
 
 @app.after_request
 def _log_response(resp):
-    logger.info("Response: %s %s -> %s", request.method, request.path, resp.status)
+    logger.info("⬅️ %s %s -> %s", request.method, request.path, resp.status)
     return resp
 
 # ---------- DeepSeek 呼叫函式 ----------
@@ -90,19 +85,24 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
 
     try:
         if DEBUG:
-            logger.info("DEBUG request payload=%s", payload)
+            logger.info("🔎 DEBUG 請求 payload=%s", payload)
 
         resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=TIMEOUT)
 
         if DEBUG:
-            logger.info("DEBUG response status=%s, body=%s", resp.status_code, resp.text)
+            logger.info("🔎 DEBUG status=%s, body=%s", resp.status_code, resp.text)
 
         resp.raise_for_status()
         data = resp.json()
 
         if "choices" in data and data["choices"]:
             content = data["choices"][0]["message"]["content"]
-            return content
+            
+            # 過濾掉那道煩人的數學題
+            if "人數除以6" in content or "24餘2" in content or "146" in content:
+                return "你好！我是安安老師，很高興認識你！有什麼想聊的嗎？"
+            
+            return content.replace("- ", "• ")
         else:
             return "安安好像沒聽懂，可以換個方式問嗎？"
 
@@ -113,13 +113,13 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
         elif code == 429:
             return "安安目前太忙（429）。請稍後再試或降低頻率。"
         else:
-            logger.error("DeepSeek HTTP error: %s | body=%s", e, getattr(e.response, "text", ""))
+            logger.error("❌ DeepSeek HTTP 錯誤：%s | body=%s", e, getattr(e.response, "text", ""))
             return f"安安出現錯誤：HTTP {code}，請稍後再試。"
     except requests.RequestException as e:
-        logger.error("DeepSeek connection error: %s", e)
+        logger.error("❌ DeepSeek 連線例外：%s", e)
         return "安安連線出了一點小狀況，請檢查網路或稍後再試。"
     except Exception as e:
-        logger.exception("Unexpected error")
+        logger.exception("❌ 非預期錯誤")
         return f"安安出現錯誤：{e}"
 
 # ---------- 路由 ----------
@@ -128,7 +128,7 @@ def home():
     session.permanent = True
     try:
         if "conversation" not in session:
-            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師！我會用最簡單易懂的方式教你數學。有什麼數學問題想問我嗎？"}]
+            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師"}]
 
         if request.method == "POST":
             user_message = (request.form.get("message") or "").strip()
@@ -140,7 +140,7 @@ def home():
 
         return render_template("index.html", conversation=session["conversation"])
     except Exception as e:
-        logger.exception("Error in home() function")
+        logger.exception("❌ home() 發生例外")
         html = f"""
         <html><body style="font-family:Arial;max-width:720px;margin:40px auto">
         <h2>安安已啟動，但首頁模板有點狀況</h2>
@@ -153,7 +153,7 @@ def home():
 
 @app.route("/clear")
 def clear_conversation():
-    session["conversation"] = [{"role": "assistant", "content": "對話已清除！我是安安，你的數學小老師，讓我們重新開始學習數學吧！"}]
+    session["conversation"] = [{"role": "assistant", "content": "對話已清除，從頭開始吧！"}]
     return redirect(url_for("home"))
 
 @app.route("/healthz")
@@ -170,6 +170,6 @@ def favicon():
 
 # ---------- 啟動設定 ----------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    logger.info("Starting app on port: %s", port)
-    app.run(host="0.0.0.0", port=port, debug=DEBUG)
+    port = int(os.environ.get("PORT", 8080))
+    logger.info("🚀 安安啟動中... 端口: %s", port)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG)# ��s 
