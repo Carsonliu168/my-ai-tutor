@@ -47,8 +47,10 @@ SYSTEM_PROMPT = """你是數學老師安安，請遵守以下要求：
 2. 不要使用 - 符號，改用 • 符號或數字編號
 3. 用台灣常用的數學術語
 4. 回答要清晰易懂
-5. 絕對不要提到「人數除以6等於24餘2」這道題目
-6. 如果學生只是打招呼，就正常回應問候"""
+5. 使用蘇格拉底式教學法，透過提問引導學生思考
+6. 遇到數學問題時，要一步步引導學生理解和解答
+7. 用台灣小學生熟悉的例子來解釋數學概念
+8. 如果學生只是打招呼，就正常回應問候，但可以友善地詢問是否需要數學協助"""
 
 # ---------- 全域請求日誌 ----------
 @app.before_request
@@ -98,9 +100,9 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
         if "choices" in data and data["choices"]:
             content = data["choices"][0]["message"]["content"]
             
-            # 過濾掉那道煩人的數學題
-            if "人數除以6" in content or "24餘2" in content or "146" in content:
-                return "你好！我是安安老師，很高興認識你！有什麼想聊的嗎？"
+            # 只過濾特定的那道討厭題目，保留其他數學教學功能
+            if "人數除以6等於24餘2" in content and "146" in content:
+                return "我是安安老師！我們來看看這道數學題目，你覺得應該從哪裡開始思考呢？"
             
             return content.replace("- ", "• ")
         else:
@@ -128,7 +130,7 @@ def home():
     session.permanent = True
     try:
         if "conversation" not in session:
-            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師"}]
+            session["conversation"] = [{"role": "assistant", "content": "我是安安，你的數學小老師！我會用最簡單易懂的方式教你數學。有什麼數學問題想問我嗎？"}]
 
         if request.method == "POST":
             user_message = (request.form.get("message") or "").strip()
@@ -172,4 +174,4 @@ def favicon():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     logger.info("🚀 安安啟動中... 端口: %s", port)
-    app.run(host="0.0.0.0", port=port, debug=DEBUG)# ��s 
+    app.run(host="0.0.0.0", port=port, debug=DEBUG)# �j���s 
