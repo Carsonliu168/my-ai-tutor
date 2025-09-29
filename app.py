@@ -21,7 +21,7 @@ app.permanent_session_lifetime = timedelta(hours=2)
 
 # Railway 環境設定
 app.config.update(
-    SESSION_COOKIE_SECURE=False,  # 本地測試設為 False
+    SESSION_COOKIE_SECURE=False,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax'
 )
@@ -32,34 +32,45 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = "deepseek-chat"
 TIMEOUT = 30
 
-# 顯示端口資訊
 PORT = os.environ.get("PORT")
-logger.info("🔍 環境變數檢查: PORT=%s", PORT)
+logger.info("環境變數檢查: PORT=%s", PORT)
 
 if DEEPSEEK_API_KEY:
-    logger.info("✅ 成功讀到 DEEPSEEK_API_KEY | 安安 v1.3D，DEBUG=%s", DEBUG)
+    logger.info("成功讀到 DEEPSEEK_API_KEY | 安安 v1.4，DEBUG=%s", DEBUG)
 else:
-    logger.warning("⚠️ 沒有讀到 DEEPSEEK_API_KEY，請在本地/部署平台設定環境變數。")
+    logger.warning("沒有讀到 DEEPSEEK_API_KEY，請在環境變數設定。")
 
 # ---------- 共同常數 ----------
 SYSTEM_PROMPT = """你是數學老師安安，請遵守以下要求：
+
+教學原則：
 1. 使用繁體中文回答
-2. 不要使用 - 符號，改用 • 符號或數字編號
+2. 不要使用減號 - 符號，改用文字「減」或其他方式表達
 3. 用台灣常用的數學術語
-4. 回答要清晰易懂
-5. 使用蘇格拉底式教學法，透過提問引導學生思考
-6. 遇到數學問題時，要一步步引導學生理解和解答
-7. 用台灣小學生熟悉的例子來解釋數學概念
-8. 如果學生只是打招呼，就正常回應問候，但可以友善地詢問是否需要數學協助"""
+4. 使用蘇格拉底式教學法，但保持簡潔
+
+教學步驟限制：
+• 最多給3到4步的引導提示
+• 每步提示要簡短清楚，不要太囉嗦
+• 如果學生回答「不懂」、「不知道」或類似表達，就直接給出答案和清楚的解釋
+• 不要一直重複問同樣的問題
+
+引導範例（簡潔版）：
+學生問：「5加3等於多少？」
+安安：「我們一起想想，你有5顆糖果，再拿3顆，數數看總共幾顆？」
+學生：「不知道」
+安安：「沒關係！答案是8。因為5加3就是把5和3合起來，5、6、7、8，數4個數就是8了。」
+
+記住：引導要簡潔有力，學生卡住時就給答案和解釋，不要過度囉嗦。"""
 
 # ---------- 全域請求日誌 ----------
 @app.before_request
 def _log_request():
-    logger.info("➡️ %s %s", request.method, request.path)
+    logger.info("收到請求 %s %s", request.method, request.path)
 
 @app.after_request
 def _log_response(resp):
-    logger.info("⬅️ %s %s -> %s", request.method, request.path, resp.status)
+    logger.info("回應 %s %s -> %s", request.method, request.path, resp.status)
     return resp
 
 # ---------- DeepSeek 呼叫函式 ----------
@@ -87,12 +98,12 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
 
     try:
         if DEBUG:
-            logger.info("🔎 DEBUG 請求 payload=%s", payload)
+            logger.info("DEBUG 請求 payload=%s", payload)
 
         resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=TIMEOUT)
 
         if DEBUG:
-            logger.info("🔎 DEBUG status=%s, body=%s", resp.status_code, resp.text)
+            logger.info("DEBUG status=%s, body=%s", resp.status_code, resp.text)
 
         resp.raise_for_status()
         data = resp.json()
@@ -100,7 +111,7 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
         if "choices" in data and data["choices"]:
             content = data["choices"][0]["message"]["content"]
             
-            # 只過濾特定的那道討厭題目，保留其他數學教學功能
+            # 過濾特定的討厭題目
             if "人數除以6等於24餘2" in content and "146" in content:
                 return "我是安安老師！我們來看看這道數學題目，你覺得應該從哪裡開始思考呢？"
             
@@ -111,17 +122,17 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
     except requests.HTTPError as e:
         code = getattr(e.response, "status_code", None)
         if code in (401, 403):
-            return "安安無法連線：API 金鑰無效或沒有權限（401/403）。請更新 DEEPSEEK_API_KEY 後再試。"
+            return "安安無法連線：API 金鑰無效或沒有權限。請更新 DEEPSEEK_API_KEY 後再試。"
         elif code == 429:
-            return "安安目前太忙（429）。請稍後再試或降低頻率。"
+            return "安安目前太忙。請稍後再試或降低頻率。"
         else:
-            logger.error("❌ DeepSeek HTTP 錯誤：%s | body=%s", e, getattr(e.response, "text", ""))
+            logger.error("DeepSeek HTTP 錯誤：%s | body=%s", e, getattr(e.response, "text", ""))
             return f"安安出現錯誤：HTTP {code}，請稍後再試。"
     except requests.RequestException as e:
-        logger.error("❌ DeepSeek 連線例外：%s", e)
+        logger.error("DeepSeek 連線例外：%s", e)
         return "安安連線出了一點小狀況，請檢查網路或稍後再試。"
     except Exception as e:
-        logger.exception("❌ 非預期錯誤")
+        logger.exception("非預期錯誤")
         return f"安安出現錯誤：{e}"
 
 # ---------- 路由 ----------
@@ -142,7 +153,7 @@ def home():
 
         return render_template("index.html", conversation=session["conversation"])
     except Exception as e:
-        logger.exception("❌ home() 發生例外")
+        logger.exception("home() 發生例外")
         html = f"""
         <html><body style="font-family:Arial;max-width:720px;margin:40px auto">
         <h2>安安已啟動，但首頁模板有點狀況</h2>
@@ -173,5 +184,5 @@ def favicon():
 # ---------- 啟動設定 ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    logger.info("🚀 安安啟動中... 端口: %s", port)
-    app.run(host="0.0.0.0", port=port, debug=DEBUG)# �j���s 
+    logger.info("安安啟動中... 端口: %s", port)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG)
