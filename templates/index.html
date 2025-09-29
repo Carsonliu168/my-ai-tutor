@@ -171,24 +171,25 @@
         function scrollToBottom() {
             var container = document.getElementById('chatContainer');
             if (container) {
-                container.scrollTop = container.scrollHeight;
+                // Use smooth scroll to absolute bottom
+                container.scrollTo({
+                    top: container.scrollHeight + 1000,
+                    behavior: 'smooth'
+                });
             }
         }
         
-        // Multiple triggers to ensure scroll
-        document.addEventListener('DOMContentLoaded', scrollToBottom);
-        window.addEventListener('load', scrollToBottom);
+        // Multiple triggers
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(scrollToBottom, 100);
+            setTimeout(scrollToBottom, 500);
+            setTimeout(scrollToBottom, 1000);
+        });
         
-        // Delayed scroll after page fully loaded
-        setTimeout(function() {
-            scrollToBottom();
-        }, 300);
-        
-        // Keep scrolling to bottom every 500ms for first 2 seconds
-        var scrollInterval = setInterval(scrollToBottom, 500);
-        setTimeout(function() {
-            clearInterval(scrollInterval);
-        }, 2000);
+        window.addEventListener('load', function() {
+            setTimeout(scrollToBottom, 100);
+            setTimeout(scrollToBottom, 500);
+        });
     </script>
 </body>
 </html>
