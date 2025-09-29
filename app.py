@@ -2,6 +2,7 @@ import os
 import logging
 from datetime import timedelta
 from typing import List, Dict
+import re
 
 import requests
 from flask import Flask, request, render_template, session, redirect, url_for, make_response
@@ -36,7 +37,7 @@ PORT = os.environ.get("PORT")
 logger.info("PORT check: %s", PORT)
 
 if DEEPSEEK_API_KEY:
-    logger.info("AnAn v1.5 ready, DEBUG=%s", DEBUG)
+    logger.info("AnAn v1.6 ready, DEBUG=%s", DEBUG)
 else:
     logger.warning("No DEEPSEEK_API_KEY found")
 
@@ -134,7 +135,21 @@ def ask_deepseek(user_message: str, conversation_history: List[Dict]) -> str:
             if "人數除以6等於24餘2" in content and "146" in content:
                 return "我是安安老師！我們來看看這道數學題目，你覺得應該從哪裡開始思考呢？"
             
-            return content.replace("- ", "• ")
+            # Force fix all symbol issues
+            content = content.replace("•", "-")
+            content = content.replace("• ", "- ")
+            content = content.replace(" • ", " - ")
+            content = content.replace("·", "-")
+            content = content.replace(" · ", " - ")
+            
+            # Fix specific patterns like N•2, N.2, N·2
+            content = re.sub(r'([A-Z])•(\d)', r'\1-\2', content)
+            content = re.sub(r'([A-Z])\.(\d)', r'\1-\2', content)
+            content = re.sub(r'([A-Z])·(\d)', r'\1-\2', content)
+            content = re.sub(r'([A-Z])\s•\s(\d)', r'\1-\2', content)
+            content = re.sub(r'([A-Z])\s·\s(\d)', r'\1-\2', content)
+            
+            return content
         else:
             return "安安好像沒聽懂，可以換個方式問嗎？"
 
