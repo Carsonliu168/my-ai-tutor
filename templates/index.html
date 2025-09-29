@@ -170,26 +170,25 @@
     <script>
         function scrollToBottom() {
             var container = document.getElementById('chatContainer');
-            container.scrollTop = container.scrollHeight;
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
         }
         
-        window.onload = function() {
+        // Multiple triggers to ensure scroll
+        document.addEventListener('DOMContentLoaded', scrollToBottom);
+        window.addEventListener('load', scrollToBottom);
+        
+        // Delayed scroll after page fully loaded
+        setTimeout(function() {
             scrollToBottom();
-        };
+        }, 300);
         
-        function handleSubmit() {
-            setTimeout(scrollToBottom, 100);
-            return true;
-        }
-        
-        var observer = new MutationObserver(function() {
-            scrollToBottom();
-        });
-        
-        observer.observe(document.getElementById('chatContainer'), {
-            childList: true,
-            subtree: true
-        });
+        // Keep scrolling to bottom every 500ms for first 2 seconds
+        var scrollInterval = setInterval(scrollToBottom, 500);
+        setTimeout(function() {
+            clearInterval(scrollInterval);
+        }, 2000);
     </script>
 </body>
 </html>
