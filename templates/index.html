@@ -157,6 +157,7 @@
                 <div class="message-content">{{ msg.content|safe }}</div>
             </div>
         {% endfor %}
+        <div id="bottom-anchor"></div>
     </div>
     <form method="POST" onsubmit="return handleSubmit();">
         <div class="input-area">
@@ -168,27 +169,25 @@
         <a href="/clear" onclick="return confirm('確定要清除對話嗎？')">🗑️ 清除對話</a>
     </div>
     <script>
+        // Scroll to bottom anchor
         function scrollToBottom() {
-            var container = document.getElementById('chatContainer');
-            if (container) {
-                // Use smooth scroll to absolute bottom
-                container.scrollTo({
-                    top: container.scrollHeight + 1000,
-                    behavior: 'smooth'
-                });
+            var anchor = document.getElementById('bottom-anchor');
+            if (anchor) {
+                anchor.scrollIntoView({ behavior: 'instant', block: 'end' });
             }
         }
         
-        // Multiple triggers
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(scrollToBottom, 100);
-            setTimeout(scrollToBottom, 500);
-            setTimeout(scrollToBottom, 1000);
-        });
+        // Execute on page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', scrollToBottom);
+        } else {
+            scrollToBottom();
+        }
         
+        // Also scroll after a short delay to ensure content is rendered
         window.addEventListener('load', function() {
-            setTimeout(scrollToBottom, 100);
-            setTimeout(scrollToBottom, 500);
+            setTimeout(scrollToBottom, 50);
+            setTimeout(scrollToBottom, 200);
         });
     </script>
 </body>
