@@ -136,6 +136,61 @@
             color: #764ba2;
             text-decoration: underline;
         }
+        
+        /* 圖片上傳相關樣式 */
+        .upload-area {
+            display: flex;
+            gap: 12px;
+            margin: 15px 0;
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            align-items: center;
+        }
+        .upload-btn {
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .file-input {
+            display: none;
+        }
+        .preview-container {
+            text-align: center;
+            margin: 10px 0;
+        }
+        .preview-image {
+            max-width: 300px;
+            max-height: 200px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .upload-text {
+            color: #666;
+            font-size: 14px;
+            margin: 0;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        /* 可愛的小裝飾 */
         .header::before {
             content: "🧮✨";
             font-size: 1.5em;
@@ -149,6 +204,7 @@
         <h1>數學小老師安安</h1>
         <p style="margin: 10px 0 0 0; color: #666; font-size: 1.1em;">讓數學變得簡單又有趣！</p>
     </div>
+    
     <div class="chat-container" id="chatContainer">
         {% for msg in conversation %}
             <div class="message {{ 'user' if msg.role == 'user' else 'assistant' }}">
@@ -156,35 +212,96 @@
                 <div class="message-content">{{ msg.content|safe }}</div>
             </div>
         {% endfor %}
-        <div id="bottom-anchor"></div>
     </div>
-    <form method="POST">
+
+    <!-- 圖片上傳區域 -->
+    <div class="upload-area">
+        <input type="file" id="imageInput" class="file-input" accept="image/*" capture="environment">
+        <button type="button" class="upload-btn" onclick="document.getElementById('imageInput').click()">
+            📷 上傳數學題目圖片
+        </button>
+        <p class="upload-text">拍下數學題目，安安幫你解答！</p>
+    </div>
+
+    <div class="preview-container">
+        <img id="previewImage" class="preview-image" alt="圖片預覽">
+        <div id="loading" class="loading">🔄 正在辨識圖片中的數學題目...</div>
+    </div>
+
+    <!-- 文字輸入區域 -->
+    <form method="POST" id="textForm">
         <div class="input-area">
-            <input type="text" name="message" placeholder="有什麼數學問題想問安安老師呢？ 😊" required>
+            <input type="text" name="message" placeholder="有什麼數學問題想問安安老師呢？ 😊" required
+                   onkeydown="if(event.key==='Enter'){event.preventDefault(); this.form.submit();}">
             <button type="submit">✨ 問安安</button>
         </div>
     </form>
+
     <div class="controls">
         <a href="/clear" onclick="return confirm('確定要清除對話嗎？')">🗑️ 清除對話</a>
     </div>
+
     <script>
-        function scrollToBottom() {
-            var anchor = document.getElementById('bottom-anchor');
-            if (anchor) {
-                anchor.scrollIntoView({ behavior: 'instant', block: 'end' });
-            }
-        }
-        
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', scrollToBottom);
-        } else {
-            scrollToBottom();
-        }
-        
-        window.addEventListener('load', function() {
-            setTimeout(scrollToBottom, 50);
-            setTimeout(scrollToBottom, 200);
+        window.onload = function() {
+            var container = document.getElementById('chatContainer');
+            container.scrollTop = container.scrollHeight;
+        };
+
+        // 圖片上傳處理
+        document.getElementById('imageInput').addEventListener('change', function(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+
+            // 顯示預覽
+            var preview = document.getElementById('previewImage');
+            var reader = new FileReader();
+            
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                
+                // 顯示載入中
+                document.getElementById('loading').style.display = 'block';
+                
+                // 上傳圖片
+                uploadImage(file);
+            };
+            
+            reader.readAsDataURL(file);
         });
+
+        function uploadImage(file) {
+            var formData = new FormData();
+            formData.append('image', file);
+
+            fetch('/', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else {
+                    return response.text().then(text => {
+                        throw new Error('上傳失敗: ' + text);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('上傳錯誤:', error);
+                document.getElementById('loading').style.display = 'none';
+                alert('圖片上傳失敗，請重試！');
+            });
+        }
+
+        // 自動滾動到最新訊息
+        function scrollToBottom() {
+            var container = document.getElementById('chatContainer');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // 頁面載入時滾動到底部
+        scrollToBottom();
     </script>
 </body>
 </html>

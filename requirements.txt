@@ -2,3 +2,5 @@ flask==2.3.3
 gunicorn==23.0.0
 requests==2.32.3
 uvicorn==0.30.6
+google-cloud-vision==3.4.4
+python-dotenv==1.0.0
