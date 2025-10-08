@@ -1,138 +1,180 @@
-<html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
 <head>
-    <title>數學小老師安安</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <title>數學小老師安安</title>
+
+    <!-- MathJax -->
+    <script id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+
     <style>
-        body { 
-            font-family: Microsoft JhengHei, Arial; 
-            max-width: 800px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); 
-            line-height: 1.6; 
+        body {
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%);
+            line-height: 1.6;
             min-height: 100vh;
         }
-        .header { text-align: center; color: #2c3e50; margin-bottom: 25px; background: rgba(255,255,255,0.9);
-            padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
-        .header h1 { margin: 0; font-size: 2.2em; color: #e74c3c; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);}
-        .chat-container { background: rgba(255,255,255,0.95); border: 2px solid #dee2e6; border-radius: 15px;
-            padding: 20px; height: 500px; overflow-y: auto; margin: 20px 0; box-shadow: 0 6px 12px rgba(0,0,0,0.1);}
-        .message { margin: 15px 0; max-width: 80%; padding: 12px 18px; border-radius: 18px; position: relative;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); animation: slideIn 0.3s ease-out;}
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
-        .user { background: linear-gradient(135deg,#4facfe 0%,#00f2fe 100%); color:white; margin-left:auto; margin-right:10px;}
-        .assistant { background: linear-gradient(135deg,#ffecd2 0%,#fcb69f 100%); color:#8b4513; margin-right:auto; margin-left:10px;}
-        .message-header { font-weight: bold; margin-bottom: 8px; font-size: 0.9em; opacity: 0.8;}
-        .message-content { white-space: pre-wrap; word-wrap: break-word; font-size: 1.1em;}
-        .upload-area { display:flex; gap:12px; margin:15px 0; background:rgba(255,255,255,0.9);
-            padding:15px; border-radius:15px; box-shadow:0 4px 6px rgba(0,0,0,0.1); align-items:center;}
-        .upload-btn { padding:12px 25px; background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);
-            color:white; border:none; border-radius:20px; cursor:pointer; font-size:14px; font-weight:bold; transition:all 0.3s ease;}
-        .upload-btn:hover { transform:translateY(-2px); box-shadow:0 4px 8px rgba(0,0,0,0.2);}
-        .file-input { display:none;}
-        .preview-container { text-align:center; margin:10px 0;}
-        .preview-image { max-width:300px; max-height:200px; border-radius:10px; box-shadow:0 4px 8px rgba(0,0,0,0.2); display:none;}
-        .thinking-animation { display:flex; align-items:center; gap:6px;}
-        .dot { width:8px; height:8px; background-color:#8b4513; border-radius:50%; animation:blink 1.5s infinite;}
-        .dot:nth-child(2){animation-delay:0.3s;} .dot:nth-child(3){animation-delay:0.6s;}
-        @keyframes blink {0%,80%,100%{opacity:0.2;} 40%{opacity:1;}}
-        .error { color:red; font-weight:bold;}
+
+        .header {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 25px;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.2em;
+            color: #e74c3c;
+        }
+
+        .chat-container {
+            background: rgba(255,255,255,0.95);
+            border: 2px solid #dee2e6;
+            border-radius: 15px;
+            padding: 20px;
+            height: 500px;
+            overflow-y: auto;
+            margin: 20px 0;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+
+        .message {
+            margin: 15px 0;
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            margin-left: auto;
+            margin-right: 10px;
+            text-align: left;
+            border-bottom-right-radius: 5px;
+        }
+
+        .assistant {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #8b4513;
+            margin-right: auto;
+            margin-left: 10px;
+            text-align: left;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-header {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .message-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 1.1em;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #e3f2fd;
+            border-radius: 25px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.2);
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+            font-weight: bold;
+            margin: 10px 0;
+            display: none;
+        }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>數學小老師安安</h1>
-        <p style="margin:10px 0 0 0;color:#666;font-size:1.1em;">讓數學變得簡單又有趣！</p>
+        <p>讓數學變得簡單又有趣 ✨</p>
     </div>
 
-    <div class="chat-container" id="chatContainer"></div>
-
-    <div class="upload-area">
-        <input type="file" id="imageInput" class="file-input" accept="image/*" capture="environment">
-        <button type="button" class="upload-btn" onclick="document.getElementById('imageInput').click()">📷 上傳數學題目圖片</button>
-        <p class="upload-text">拍下數學題目，安安幫你解答！</p>
+    <div id="chatContainer" class="chat-container">
+        <div id="thinking" class="loading">🧠 安安老師正在思考中...</div>
+        {% for msg in conversation %}
+        <div class="message {{ 'user' if msg.role == 'user' else 'assistant' }}">
+            <div class="message-header">{{ '你' if msg.role == 'user' else '安安老師' }}:</div>
+            <div class="message-content">{{ msg.content|safe }}</div>
+        </div>
+        {% endfor %}
     </div>
 
-    <div class="preview-container">
-        <img id="previewImage" class="preview-image" alt="圖片預覽">
-    </div>
+    <form method="POST" id="textForm">
+        <div class="input-area">
+            <input type="text" name="message" placeholder="請輸入數學問題 😊" required
+                onkeydown="if(event.key==='Enter'){event.preventDefault(); this.form.submit();}">
+            <button type="submit">✨ 問安安</button>
+        </div>
+    </form>
 
     <script>
-        console.log("✅ JS 已成功載入新版 index.html"); // ← 確認是否載入新版
-
-        document.getElementById('imageInput').addEventListener('change', function(event) {
-            var file = event.target.files[0];
-            if (!file) return;
-
-            var preview = document.getElementById('previewImage');
-            var reader = new FileReader();
-
-            reader.onload = function(e) {
-                preview.src = e.target.result;
-                preview.style.display = 'block';
-
-                var chatContainer = document.getElementById('chatContainer');
-                var thinkingMsg = document.createElement('div');
-                thinkingMsg.className = 'message assistant';
-                thinkingMsg.innerHTML = `
-                    <div class="message-header">安安老師：</div>
-                    <div class="message-content">
-                        <div class="thinking-animation">
-                            🧠 安安老師正在思考中
-                            <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                        </div>
-                    </div>`;
-                chatContainer.appendChild(thinkingMsg);
-                scrollToBottom();
-                uploadImage(file, thinkingMsg);
-            };
-            reader.readAsDataURL(file);
-        });
-
-        function uploadImage(file, thinkingMsg) {
-            var formData = new FormData();
-            formData.append('image', file);
-            const startTime = Date.now();
-
-            fetch('/analyze_image', { method: 'POST', body: formData })
-                .then(r => r.json())
-                .then(data => {
-                    const elapsed = Date.now() - startTime;
-                    const waitTime = elapsed < 1500 ? 1500 - elapsed : 0;
-
-                    setTimeout(() => {
-                        thinkingMsg.remove();
-                        var chatContainer = document.getElementById('chatContainer');
-                        var msg = document.createElement('div');
-                        msg.className = 'message assistant';
-                        msg.innerHTML = `
-                            <div class="message-header">安安老師：</div>
-                            <div class="message-content">${data.result.replace(/\n/g,'<br>')}</div>`;
-                        chatContainer.appendChild(msg);
-                        scrollToBottom();
-                        if (window.MathJax) MathJax.typesetPromise();
-                    }, waitTime);
-                })
-                .catch(err => {
-                    console.error('❌ 上傳錯誤:', err);
-                    thinkingMsg.remove();
-                    var chatContainer = document.getElementById('chatContainer');
-                    var msg = document.createElement('div');
-                    msg.className = 'message assistant error';
-                    msg.innerHTML = `
-                        <div class="message-header">安安老師：</div>
-                        <div class="message-content">⚠️ 出現錯誤，請再試一次！</div>`;
-                    chatContainer.appendChild(msg);
-                });
-        }
-
-        function scrollToBottom() {
-            var c = document.getElementById('chatContainer');
-            c.scrollTop = c.scrollHeight;
-        }
+        window.onload = function() {
+            document.getElementById('chatContainer').scrollTop =
+                document.getElementById('chatContainer').scrollHeight;
+        };
     </script>
 </body>
 </html>
