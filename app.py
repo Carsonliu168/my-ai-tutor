@@ -37,11 +37,32 @@ except Exception as e:
     vision_client = None
 
 # -------------------------------
-# 📄 首頁
+# 📄 首頁 - 修正版：支持 GET 和 POST
 # -------------------------------
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
-    return render_template("index.html")
+    conversation = []
+    
+    if request.method == "POST":
+        user_message = request.form.get("message", "")
+        if user_message:
+            # 呼叫 DeepSeek API
+            headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": user_message}]
+            }
+            
+            try:
+                r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=30)
+                ai_response = r.json().get("choices", [{}])[0].get("message", {}).get("content", "沒有回應")
+                
+                conversation.append({"role": "user", "content": user_message})
+                conversation.append({"role": "assistant", "content": ai_response})
+            except Exception as e:
+                conversation.append({"role": "assistant", "content": f"錯誤：{e}"})
+    
+    return render_template("index.html", conversation=conversation)
 
 # -------------------------------
 # 💬 一般問答 (原功能)
@@ -96,8 +117,8 @@ def analyze_image():
     # --- 將圖片 + OCR 結果交給 GPT 做幾何分析 ---
     headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
     prompt = f"""
-請閱讀下列 OCR 文字內容，並同時觀察圖片（若有圖形）。
-這是一道幾何圖形相關的數學題，請推理題意並詳細講解解題步驟。
+請閱讀下列 OCR 文字內容,並同時觀察圖片（若有圖形）。
+這是一道幾何圖形相關的數學題,請推理題意並詳細講解解題步驟。
 
 題目文字：
 {ocr_text}
