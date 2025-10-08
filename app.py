@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# 版本：v2.2 — 含清除對話 + 圖片上傳 + DeepSeek + Vision
+# 終極繁體版 v2.0：Vision OCR + GPT 幾何講解 + DeepSeek 備援 + 安安人格
 # ================================
 
 from flask import Flask, render_template, request, jsonify
@@ -24,8 +24,6 @@ try:
     if creds_json:
         json.loads(creds_json)
         print("✅ 成功讀到 GOOGLE_APPLICATION_CREDENTIALS_JSON")
-
-        # 初始化 Vision API
         with open("google_cred.json", "w", encoding="utf-8") as f:
             f.write(creds_json)
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_cred.json"
@@ -39,43 +37,67 @@ except Exception as e:
 
 
 # -------------------------------
-# 📄 首頁 - 文字問答功能
+# 📄 首頁
 # -------------------------------
 @app.route("/", methods=["GET", "POST"])
 def home():
     conversation = []
-
     if request.method == "POST":
         user_message = request.form.get("message", "")
         if user_message:
-            headers = {
-                "Authorization": f"Bearer {deepseek_api_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": user_message}]
-            }
-
-            try:
-                r = requests.post(
-                    "https://api.deepseek.com/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=30
-                )
-                ai_response = r.json().get("choices", [{}])[0].get("message", {}).get("content", "沒有回應")
-
-                conversation.append({"role": "user", "content": user_message})
-                conversation.append({"role": "assistant", "content": ai_response})
-            except Exception as e:
-                conversation.append({"role": "assistant", "content": f"錯誤：{e}"})
-
+            ai_response = ask_anan(user_message)
+            conversation.append({"role": "user", "content": user_message})
+            conversation.append({"role": "assistant", "content": ai_response})
     return render_template("index.html", conversation=conversation)
 
 
 # -------------------------------
-# 🧮 圖片上傳：Vision OCR + DeepSeek 幾何解題
+# 💬 文字問答（安安人格 + DeepSeek 備援）
+# -------------------------------
+def ask_anan(question: str):
+    system_prompt = """
+你是一位名叫「安安」的數學小老師，個性溫柔、幽默又有耐心。
+請用繁體中文回答，語氣要像在陪國小學生聊天，
+回答要親切、有趣、互動性高。
+但要記得：
+- 每次回應不要超過 20 句。
+- 即使學生聊偏題，也要用幽默方式慢慢拉回數學主題。
+- 若是數學題，要先用簡單口語幫助他理解題意，再逐步引導解題。
+- 回答時可使用 Markdown 公式格式（如 \\( a^2 + b^2 = c^2 \\) ）。
+"""
+
+    try:
+        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ]
+        }
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
+        result = r.json().get("choices", [{}])[0].get("message", {}).get("content", "（沒有回應）")
+        return result
+    except Exception as e:
+        print("⚠️ DeepSeek 錯誤，改用 GPT 備援：", e)
+        # 備援 → GPT-4o-mini
+        backup_payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ]
+        }
+        backup_headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
+        try:
+            r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=backup_headers, json=backup_payload, timeout=40)
+            return r2.json().get("choices", [{}])[0].get("message", {}).get("content", "（GPT 備援無回應）")
+        except Exception as e2:
+            return f"⚠️ 系統錯誤，暫時無法取得回應：{e2}"
+
+
+# -------------------------------
+# 🧮 圖片解題（Vision + GPT 幾何分析）
 # -------------------------------
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
@@ -86,7 +108,7 @@ def analyze_image():
     image_bytes = image_file.read()
     image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    # --- OCR 辨識 ---
+    # --- Google Vision OCR ---
     ocr_text = ""
     try:
         if vision_client:
@@ -100,48 +122,39 @@ def analyze_image():
         print("⚠️ Vision OCR 發生錯誤：", e)
         ocr_text = "(OCR 失敗)"
 
-    # --- 交給 DeepSeek 解題 ---
-    headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
-    prompt = f"""
-請閱讀下列 OCR 文字內容，並同時觀察圖片（若有圖形）。
-這是一道幾何或應用題，請推理題意並詳細講解解題步驟。
-
-題目文字：
+    # --- GPT 幾何分析 ---
+    gpt_prompt = f"""
+你現在是「安安老師」，是一位專精幾何與圖形推理的數學小老師。
+請根據下列 OCR 文字內容與圖片（若有圖形），詳細推理題意並逐步講解。
+請使用繁體中文、口語化方式講解，語氣可愛、有互動感，
+並可用 Markdown 呈現公式。
+題目內容如下：
 {ocr_text}
 """
 
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_base64", "image_base64": image_base64}
-                ]
-            }
-        ]
-    }
-
     try:
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=60)
+        headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "你是安安老師，請用親切、可愛、幽默的方式講解數學。"},
+                {"role": "user", "content": [
+                    {"type": "text", "text": gpt_prompt},
+                    {"type": "image_base64", "image_base64": image_base64}
+                ]}
+            ]
+        }
+        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
         result = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
         return jsonify({"result": result}), 200, {"Content-Type": "application/json; charset=utf-8"}
+
     except Exception as e:
-        print("⚠️ analyze_image 發生錯誤：", e)
+        print("⚠️ GPT 幾何分析錯誤：", e)
         return jsonify({"result": f"⚠️ 系統錯誤：{e}"}), 500
 
 
 # -------------------------------
-# 🧹 清除對話
-# -------------------------------
-@app.route("/clear")
-def clear():
-    return render_template("index.html", conversation=[])
-
-
-# -------------------------------
-# 🩺 健康檢查（可選）
+# 🩺 健康檢查
 # -------------------------------
 @app.route("/health")
 def health():
