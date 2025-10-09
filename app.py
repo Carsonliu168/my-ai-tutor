@@ -1,40 +1,38 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v3.7：DeepSeek 主答 + GPT 備援 + Vision OCR + 學習紀錄 + 自動正確率 +
-#       蘇格拉底次數調整 + 對話保存 + 清除對話 + 學生自評功能修正
-#       ＋ analyze_image 強化（不會卡住，永遠回 JSON）
+# v4.0：DeepSeek 主答 + Gemini 免費圖片辨識 + GPT 備援 + 學習紀錄
+#       蘇格拉底次數調整 + 對話保存 + 清除對話 + 學生自評功能
+#       移除 Google Vision,改用 Gemini 直接看圖解題
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
 import os, json, base64, requests, sqlite3, uuid, re
 from datetime import datetime
-from google.cloud import vision
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
 
 # -------------------------------
-# ✅ 環境與 Vision 初始化
+# ✅ 環境變數與 API 初始化
 # -------------------------------
+deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+google_api_key = os.getenv("GOOGLE_API_KEY")
+
+# 初始化 Gemini
 try:
-    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-    creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-    if creds_json:
-        json.loads(creds_json)
-        with open("google_cred.json", "w", encoding="utf-8") as f:
-            f.write(creds_json)
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_cred.json"
-        vision_client = vision.ImageAnnotatorClient()
-        print("✅ 成功啟用 Google Vision")
+    import google.generativeai as genai
+    if google_api_key:
+        genai.configure(api_key=google_api_key)
+        print("✅ Gemini API 已就緒 (免費)")
     else:
-        vision_client = None
+        print("⚠️ 未設定 GOOGLE_API_KEY")
 except Exception as e:
-    print("⚠️ Vision 初始化錯誤：", e)
-    vision_client = None
+    print(f"⚠️ Gemini 初始化失敗: {e}")
 
 
 # -------------------------------
-# 🧠 DeepSeek / GPT 模型（蘇格拉底或正常教學模式）
+# 🧠 DeepSeek 模型（蘇格拉底或正常教學模式）
 # -------------------------------
 def ask_anan(question: str, mode="socratic"):
     if mode == "socratic":
@@ -61,10 +59,14 @@ def ask_anan(question: str, mode="socratic"):
         r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
         return r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
     except:
-        backup_headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
-        payload["model"] = "gpt-4o-mini"
-        r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=backup_headers, json=payload, timeout=40)
-        return r2.json().get("choices", [{}])[0].get("message", {}).get("content", "（無回應）")
+        # DeepSeek 失敗則用 GPT 備援
+        try:
+            backup_headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+            payload["model"] = "gpt-4o-mini"
+            r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=backup_headers, json=payload, timeout=40)
+            return r2.json().get("choices", [{}])[0].get("message", {}).get("content", "（無回應）")
+        except:
+            return "（無回應）"
 
 
 # -------------------------------
@@ -89,7 +91,7 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v3.7)")
+    print("✅ [安安] 資料庫就緒 (v4.0)")
 init_db()
 
 
@@ -100,7 +102,7 @@ def evaluate_answer(question, student_answer):
     try:
         if not re.search(r"[0-9=＋×÷\-*/]", question):
             return None
-        headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
         payload = {
             "model": "gpt-4o-mini",
             "messages": [
@@ -182,7 +184,7 @@ def clear():
 
 
 # -------------------------------
-# 🧮 圖片解題（Vision + GPT 備援，強化穩定性）
+# 🧮 圖片解題（Gemini 免費主力 + GPT 備援）
 # -------------------------------
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
@@ -191,50 +193,77 @@ def analyze_image():
 
     image_file = request.files["image"]
     image_bytes = image_file.read()
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-    ocr_text = ""
+    
+    # ========================================
+    # 第一層：嘗試 Gemini (免費)
+    # ========================================
     try:
-        if vision_client:
-            image = vision.Image(content=image_bytes)
-            response = vision_client.text_detection(image=image)
-            ocr_text = response.text_annotations[0].description if response.text_annotations else ""
-            print(f"📝 OCR 辨識結果：{(ocr_text or '')[:80]}...")
+        print("🔵 使用 Gemini 辨識...")
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        response = model.generate_content([
+            "你是數學老師安安，請看這道數學題目，用親切可愛的語氣逐步解題，條列清楚步驟與答案。如果圖片不清楚請明確說明。",
+            {"mime_type": "image/jpeg", "data": image_bytes}
+        ])
+        
+        result = response.text
+        
+        # 判斷品質
+        if len(result) > 30 and not any(x in result for x in ["無法辨識", "看不清", "模糊", "unclear"]):
+            print("✅ Gemini 成功!")
+            return jsonify({"result": result}), 200
         else:
-            ocr_text = "(Vision API 尚未初始化)"
+            print("⚠️ Gemini 品質不佳，切換到 GPT...")
+            
     except Exception as e:
-        print("⚠️ Vision OCR 發生錯誤：", e)
-        ocr_text = "(OCR 失敗)"
-
+        print(f"❌ Gemini 失敗: {e}")
+    
+    # ========================================
+    # 第二層：備援用 GPT-4o-mini
+    # ========================================
     try:
-        if not ocr_text.strip() or ocr_text == "(OCR 失敗)":
-            user_prompt = "這是一題數學圖形題，請根據圖片推測題意並解題，條列清楚步驟與答案。"
-        else:
-            user_prompt = f"題目內容：{ocr_text}\n請幫學生逐步解釋，條列清楚步驟與答案。"
-
-        headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
+        print("🟢 使用 GPT-4o-mini 備援...")
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        
+        headers = {
+            "Authorization": f"Bearer {openai_api_key}",
+            "Content-Type": "application/json"
+        }
+        
         payload = {
             "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是安安老師，用親切可愛的語氣一步步解釋數學題，必要時給出答案。"},
-                {"role": "user", "content": [
-                    {"type": "text", "text": user_prompt},
-                    {"type": "image_base64", "image_base64": image_base64}
-                ]}
-            ]
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "你是安安老師，請看這道數學題，用親切可愛的語氣一步步解釋，條列清楚步驟與答案。"
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    }
+                ]
+            }],
+            "max_tokens": 1000
         }
-
-        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
-        r.raise_for_status()
-        data = r.json()
-        result = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        if not result:
-            result = "⚠️ GPT 沒有回應，可能圖片太複雜或 API 出錯。"
-        return jsonify({"result": result}), 200, {"Content-Type": "application/json; charset=utf-8"}
-
+        
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        
+        result = r.json()["choices"][0]["message"]["content"]
+        print("✅ GPT 成功!")
+        return jsonify({"result": result}), 200
+        
     except Exception as e:
-        print("⚠️ analyze_image 例外：", e)
-        return jsonify({"result": f"⚠️ 圖片分析失敗：{e}"}), 500
+        print(f"❌ GPT 也失敗: {e}")
+        return jsonify({"result": f"⚠️ 圖片辨識失敗，請確保圖片清晰後重試！錯誤: {e}"}), 500
 
 
 # -------------------------------
