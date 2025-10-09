@@ -199,7 +199,7 @@ def analyze_image():
     # ========================================
     try:
         print("🔵 使用 Gemini 辨識...")
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
         response = model.generate_content([
             "你是數學老師安安，請看這道數學題目，用親切可愛的語氣逐步解題，條列清楚步驟與答案。如果圖片不清楚請明確說明。",
