@@ -288,16 +288,21 @@
                 const data = await res.json().catch(() => ({ result: "⚠️ 伺服器未回傳 JSON。" }));
                 thinkingEl.style.display = "none";
 
-                chat.innerHTML += `
-                  <div class="message assistant">
-                    <div class="message-header">安安老師：</div>
-                    <div class="message-content">${data.result || "⚠️ 無回應"}</div>
-                  </div>`;
+                // 圖片上傳成功後重新載入頁面
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    chat.innerHTML += `
+                      <div class="message assistant">
+                        <div class="message-header">安安老師：</div>
+                        <div class="message-content">${data.result || "⚠️ 無回應"}</div>
+                      </div>`;
 
-                if (window.MathJax && window.MathJax.typesetPromise) {
-                    MathJax.typesetPromise();
+                    if (window.MathJax && window.MathJax.typesetPromise) {
+                        MathJax.typesetPromise();
+                    }
+                    scrollToBottom();
                 }
-                scrollToBottom();
             } catch (err) {
                 thinkingEl.style.display = "none";
                 chat.innerHTML += `

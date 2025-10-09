@@ -1,8 +1,7 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.0：DeepSeek 主答 + Gemini 免費圖片辨識 + GPT 備援 + 學習紀錄
-#       蘇格拉底次數調整 + 對話保存 + 清除對話 + 學生自評功能
-#       移除 Google Vision,改用 Gemini 直接看圖解題
+# v4.1：修正圖片上傳對話儲存問題 + 完整錯誤處理
+#       DeepSeek 主答 + Gemini 免費圖片辨識 + GPT 備援
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -11,6 +10,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制 16MB
 
 # -------------------------------
 # ✅ 環境變數與 API 初始化
@@ -91,7 +91,7 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.0)")
+    print("✅ [安安] 資料庫就緒 (v4.1)")
 init_db()
 
 
@@ -184,86 +184,140 @@ def clear():
 
 
 # -------------------------------
-# 🧮 圖片解題（Gemini 免費主力 + GPT 備援）
+# 🧮 圖片解題（Gemini 免費主力 + GPT 備援）+ 對話儲存
 # -------------------------------
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
     if "image" not in request.files:
         return jsonify({"result": "⚠️ 沒有收到圖片"}), 400
 
     image_file = request.files["image"]
-    image_bytes = image_file.read()
+    
+    # 檢查檔案
+    if image_file.filename == '':
+        return jsonify({"result": "⚠️ 沒有選擇檔案"}), 400
+    
+    if not allowed_file(image_file.filename):
+        return jsonify({"result": "⚠️ 不支援的圖片格式，請使用 PNG、JPG 或 JPEG"}), 400
+
+    try:
+        image_bytes = image_file.read()
+        
+        # 檢查檔案大小 (最大 10MB)
+        if len(image_bytes) > 10 * 1024 * 1024:
+            return jsonify({"result": "⚠️ 圖片太大，請使用小於 10MB 的圖片"}), 400
+        
+    except Exception as e:
+        return jsonify({"result": f"⚠️ 讀取圖片失敗: {e}"}), 400
     
     # ========================================
     # 第一層：嘗試 Gemini (免費)
     # ========================================
+    result = None
     try:
         print("🔵 使用 Gemini 辨識...")
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        response = model.generate_content([
-            "你是數學老師安安，請看這道數學題目，用親切可愛的語氣逐步解題，條列清楚步驟與答案。如果圖片不清楚請明確說明。",
-            {"mime_type": "image/jpeg", "data": image_bytes}
-        ])
+        # 嘗試多個模型名稱
+        model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro-vision']
         
-        result = response.text
-        
-        # 判斷品質
-        if len(result) > 30 and not any(x in result for x in ["無法辨識", "看不清", "模糊", "unclear"]):
-            print("✅ Gemini 成功!")
-            return jsonify({"result": result}), 200
-        else:
-            print("⚠️ Gemini 品質不佳，切換到 GPT...")
-            
+        for model_name in model_names:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content([
+                    "你是數學老師安安，請看這道數學題目，用親切可愛的語氣逐步解題，條列清楚步驟與答案。如果圖片不清楚請明確說明。",
+                    {"mime_type": "image/jpeg", "data": image_bytes}
+                ])
+                
+                result = response.text
+                
+                # 判斷品質
+                if len(result) > 30 and not any(x in result for x in ["無法辨識", "看不清", "模糊", "unclear"]):
+                    print(f"✅ Gemini 成功! (使用模型: {model_name})")
+                    break
+                else:
+                    print(f"⚠️ Gemini ({model_name}) 品質不佳，嘗試下一個...")
+                    result = None
+            except Exception as e:
+                print(f"⚠️ Gemini ({model_name}) 失敗: {e}")
+                continue
+                
     except Exception as e:
-        print(f"❌ Gemini 失敗: {e}")
+        print(f"❌ Gemini 整體失敗: {e}")
     
     # ========================================
     # 第二層：備援用 GPT-4o-mini
     # ========================================
-    try:
-        print("🟢 使用 GPT-4o-mini 備援...")
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-        
-        headers = {
-            "Authorization": f"Bearer {openai_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "你是安安老師，請看這道數學題，用親切可愛的語氣一步步解釋，條列清楚步驟與答案。"
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
+    if not result:
+        try:
+            print("🟢 使用 GPT-4o-mini 備援...")
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            
+            headers = {
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "你是安安老師，請看這道數學題，用親切可愛的語氣一步步解釋，條列清楚步驟與答案。"
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
                         }
-                    }
-                ]
-            }],
-            "max_tokens": 1000
-        }
-        
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        
-        result = r.json()["choices"][0]["message"]["content"]
-        print("✅ GPT 成功!")
-        return jsonify({"result": result}), 200
-        
-    except Exception as e:
-        print(f"❌ GPT 也失敗: {e}")
-        return jsonify({"result": f"⚠️ 圖片辨識失敗，請確保圖片清晰後重試！錯誤: {e}"}), 500
+                    ]
+                }],
+                "max_tokens": 1000
+            }
+            
+            r = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
+            
+            result = r.json()["choices"][0]["message"]["content"]
+            print("✅ GPT 成功!")
+            
+        except Exception as e:
+            print(f"❌ GPT 也失敗: {e}")
+            return jsonify({"result": f"⚠️ 圖片辨識失敗，請確保圖片清晰後重試！"}), 500
+    
+    # ========================================
+    # ✅ 儲存對話到 session 和資料庫
+    # ========================================
+    if "conversation" not in session:
+        session["conversation"] = []
+    
+    conversation = session["conversation"]
+    conversation.append({"role": "user", "content": "📷 [上傳了數學題目圖片]"})
+    conversation.append({"role": "assistant", "content": result})
+    session["conversation"] = conversation
+    session.modified = True  # 確保 session 更新
+    
+    # 儲存到資料庫
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO records (user_id, question, topic, is_correct) VALUES (?, ?, ?, ?)",
+        (session["user_id"], "[圖片題目]", "圖片辨識", None)
+    )
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"result": result, "success": True}), 200
 
 
 # -------------------------------
