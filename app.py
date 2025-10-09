@@ -2,6 +2,7 @@
 # 📘 安安專案主程式 app.py
 # v3.7：DeepSeek 主答 + GPT 備援 + Vision OCR + 學習紀錄 + 自動正確率 +
 #       蘇格拉底次數調整 + 對話保存 + 清除對話 + 學生自評功能修正
+#       ＋ analyze_image 強化（不會卡住，永遠回 JSON）
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -142,7 +143,6 @@ def home():
             conversation.append({"role": "assistant", "content": ai_reply})
             session["conversation"] = conversation
 
-            # 自動判斷正確率
             correctness = evaluate_answer(user_msg, ai_reply)
             conn = get_conn()
             conn.execute(
@@ -182,43 +182,59 @@ def clear():
 
 
 # -------------------------------
-# 🧮 圖片解題（Vision + GPT 備援）
+# 🧮 圖片解題（Vision + GPT 備援，強化穩定性）
 # -------------------------------
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
     if "image" not in request.files:
-        return jsonify({"result": "沒有收到圖片"}), 400
-    image_bytes = request.files["image"].read()
+        return jsonify({"result": "⚠️ 沒有收到圖片"}), 400
+
+    image_file = request.files["image"]
+    image_bytes = image_file.read()
     image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    # Vision OCR
     ocr_text = ""
     try:
         if vision_client:
             image = vision.Image(content=image_bytes)
             response = vision_client.text_detection(image=image)
             ocr_text = response.text_annotations[0].description if response.text_annotations else ""
-            print(f"📝 OCR 辨識結果：{ocr_text[:80]}...")
+            print(f"📝 OCR 辨識結果：{(ocr_text or '')[:80]}...")
+        else:
+            ocr_text = "(Vision API 尚未初始化)"
     except Exception as e:
         print("⚠️ Vision OCR 發生錯誤：", e)
+        ocr_text = "(OCR 失敗)"
 
-    # GPT 備援（圖形解題）
-    if not ocr_text.strip():
-        gpt_prompt = "你是安安老師，要幫學生講解這張圖片中的數學圖形題。"
-    else:
-        gpt_prompt = f"題目內容：{ocr_text}\n請用蘇格拉底式提問引導學生思考。"
+    try:
+        if not ocr_text.strip() or ocr_text == "(OCR 失敗)":
+            user_prompt = "這是一題數學圖形題，請根據圖片推測題意並解題，條列清楚步驟與答案。"
+        else:
+            user_prompt = f"題目內容：{ocr_text}\n請幫學生逐步解釋，條列清楚步驟與答案。"
 
-    headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "你是安安老師，用可愛親切的語氣引導學生學習數學。"},
-            {"role": "user", "content": [{"type": "text", "text": gpt_prompt}, {"type": "image_base64", "image_base64": image_base64}]}
-        ]
-    }
-    r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
-    result = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    return jsonify({"result": result}), 200, {"Content-Type": "application/json; charset=utf-8"}
+        headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "你是安安老師，用親切可愛的語氣一步步解釋數學題，必要時給出答案。"},
+                {"role": "user", "content": [
+                    {"type": "text", "text": user_prompt},
+                    {"type": "image_base64", "image_base64": image_base64}
+                ]}
+            ]
+        }
+
+        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        result = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not result:
+            result = "⚠️ GPT 沒有回應，可能圖片太複雜或 API 出錯。"
+        return jsonify({"result": result}), 200, {"Content-Type": "application/json; charset=utf-8"}
+
+    except Exception as e:
+        print("⚠️ analyze_image 例外：", e)
+        return jsonify({"result": f"⚠️ 圖片分析失敗：{e}"}), 500
 
 
 # -------------------------------
