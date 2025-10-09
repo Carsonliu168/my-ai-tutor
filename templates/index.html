@@ -189,11 +189,11 @@
             text-decoration: underline;
         }
 
-        /* ✅ 新增：學生自評區 */
         #feedback {
             text-align: center;
             margin: 15px 0 10px 0;
         }
+
         #feedback button {
             padding: 10px 18px;
             margin: 0 5px;
@@ -203,9 +203,11 @@
             font-weight: bold;
             cursor: pointer;
         }
+
         #btn-understood {
             background: linear-gradient(135deg, #4caf50 0%, #81c784 100%);
         }
+
         #btn-confused {
             background: linear-gradient(135deg, #f44336 0%, #e57373 100%);
         }
@@ -244,7 +246,6 @@
         </div>
     </form>
 
-    <!-- ✅ 新增：學生自評區 -->
     <div id="feedback">
         <button id="btn-understood" onclick="sendFeedback(1)">👍 我懂了</button>
         <button id="btn-confused" onclick="sendFeedback(0)">❓ 我不懂</button>
@@ -259,10 +260,10 @@
         const imageInput = document.getElementById("imageInput");
         const previewArea = document.getElementById("previewArea");
         const previewImage = document.getElementById("previewImage");
+        const chat = document.getElementById("chatContainer");
 
         function scrollToBottom() {
-            const container = document.getElementById("chatContainer");
-            container.scrollTop = container.scrollHeight;
+            chat.scrollTop = chat.scrollHeight;
         }
 
         document.getElementById("textForm").addEventListener("submit", function () {
@@ -270,7 +271,7 @@
             scrollToBottom();
         });
 
-        imageInput.addEventListener("change", function (event) {
+        imageInput.addEventListener("change", async function (event) {
             const file = event.target.files[0];
             if (!file) return;
 
@@ -282,28 +283,32 @@
             const formData = new FormData();
             formData.append("image", file);
 
-            fetch("/analyze_image", {
-                method: "POST",
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
+            try {
+                const res = await fetch("/analyze_image", { method: "POST", body: formData });
+                const data = await res.json().catch(() => ({ result: "⚠️ 伺服器未回傳 JSON。" }));
                 thinkingEl.style.display = "none";
-                const chat = document.getElementById("chatContainer");
+
                 chat.innerHTML += `
-                    <div class="message assistant">
-                        <div class="message-header">安安老師：</div>
-                        <div class="message-content">${data.result}</div>
-                    </div>`;
+                  <div class="message assistant">
+                    <div class="message-header">安安老師：</div>
+                    <div class="message-content">${data.result || "⚠️ 無回應"}</div>
+                  </div>`;
+
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    MathJax.typesetPromise();
+                }
                 scrollToBottom();
-            })
-            .catch(err => {
+            } catch (err) {
                 thinkingEl.style.display = "none";
-                alert("圖片上傳或辨識失敗，請重試！");
-            });
+                chat.innerHTML += `
+                  <div class="message assistant">
+                    <div class="message-header">安安老師：</div>
+                    <div class="message-content">⚠️ 圖片上傳或辨識失敗，請重試！</div>
+                  </div>`;
+                scrollToBottom();
+            }
         });
 
-        /* ✅ 新增：發送學生自評 */
         async function sendFeedback(understood){
             try {
                 const res = await fetch('/feedback', {
