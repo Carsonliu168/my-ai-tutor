@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.3：升級至 Gemini v1 API，支援 gemini-1.5-flash 正式版
+# v4.3a：Railway 相容修正版（使用 gemini-pro-vision 模型）
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -18,12 +18,12 @@ deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 google_api_key = os.getenv("GOOGLE_API_KEY")
 
-# 初始化 Gemini（v1 API）
+# 初始化 Gemini（使用舊版 SDK 相容）
 try:
     import google.generativeai as genai
     if google_api_key:
         genai.configure(api_key=google_api_key)
-        print("✅ Gemini API 已就緒 (v1)")
+        print("✅ Gemini API 已就緒 (相容版)")
     else:
         print("⚠️ 未設定 GOOGLE_API_KEY")
 except Exception as e:
@@ -86,7 +86,7 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.3)")
+    print("✅ [安安] 資料庫就緒 (v4.3a)")
 init_db()
 
 
@@ -179,7 +179,7 @@ def clear():
 
 
 # -------------------------------
-# 🧮 圖片解題（Gemini v1 + GPT 備援）
+# 🧮 圖片解題（Gemini 相容版 + GPT 備援）
 # -------------------------------
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
@@ -204,19 +204,19 @@ def analyze_image():
     except Exception as e:
         return jsonify({"result": f"⚠️ 讀取圖片失敗: {e}"}), 400
 
-    # 使用新版 Gemini v1
+    # 使用 Gemini (舊SDK) - gemini-pro-vision
     result = None
     try:
-        print("🔵 使用 Gemini v1 辨識中...")
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        print("🔵 使用 Gemini 相容版辨識中...")
+        model = genai.GenerativeModel("gemini-pro-vision")
         response = model.generate_content([
             "你是數學老師安安，請幫我看這道數學題，用親切可愛的語氣，條列清楚步驟與答案。",
             {"mime_type": "image/jpeg", "data": image_bytes}
         ])
         result = response.text
-        print("✅ Gemini v1 成功！")
+        print("✅ Gemini 成功！")
     except Exception as e:
-        print(f"⚠️ Gemini v1 失敗: {e}")
+        print(f"⚠️ Gemini 相容版失敗: {e}")
 
     # 備援 GPT
     if not result:
