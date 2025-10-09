@@ -188,6 +188,27 @@
             color: #764ba2;
             text-decoration: underline;
         }
+
+        /* ✅ 新增：學生自評區 */
+        #feedback {
+            text-align: center;
+            margin: 15px 0 10px 0;
+        }
+        #feedback button {
+            padding: 10px 18px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #btn-understood {
+            background: linear-gradient(135deg, #4caf50 0%, #81c784 100%);
+        }
+        #btn-confused {
+            background: linear-gradient(135deg, #f44336 0%, #e57373 100%);
+        }
     </style>
 </head>
 
@@ -222,6 +243,12 @@
             <button type="submit">✨ 問安安</button>
         </div>
     </form>
+
+    <!-- ✅ 新增：學生自評區 -->
+    <div id="feedback">
+        <button id="btn-understood" onclick="sendFeedback(1)">👍 我懂了</button>
+        <button id="btn-confused" onclick="sendFeedback(0)">❓ 我不懂</button>
+    </div>
 
     <div class="controls">
         <a href="/clear" onclick="return confirm('確定要清除所有對話嗎？')">🗑️ 清除對話</a>
@@ -275,6 +302,25 @@
                 alert("圖片上傳或辨識失敗，請重試！");
             });
         });
+
+        /* ✅ 新增：發送學生自評 */
+        async function sendFeedback(understood){
+            try {
+                const res = await fetch('/feedback', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({understood})
+                });
+                const data = await res.json();
+                if(data.status === 'ok'){
+                    alert(understood ? '太棒了～安安替你開心 💪' : '沒關係，我們再一起想想吧 💭');
+                }else{
+                    alert('紀錄失敗，請稍後再試！');
+                }
+            } catch(e){
+                alert('⚠️ 傳送失敗，請稍後再試。');
+            }
+        }
 
         scrollToBottom();
     </script>

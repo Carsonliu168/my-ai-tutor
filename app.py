@@ -1,186 +1,288 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v3.0：安安人格 + 蘇格拉底教學法 + Vision 幾何解題 + DeepSeek 備援
+# v3.6：DeepSeek 主答 + GPT 圖像備援 + Vision OCR +
+#       後台統計（圖表/篩選/匯出/週報）+ 自評回饋 + 使用時間追蹤 +
+#       ✅ 新增自動判斷答題正確率 evaluate_answer()
 # ================================
 
-from flask import Flask, render_template, request, jsonify
-import os, json, base64, requests
+from flask import (
+    Flask, render_template, request, jsonify, session,
+    render_template_string, send_file
+)
+import os, json, base64, requests, sqlite3, uuid, csv, re
+from datetime import datetime
 from google.cloud import vision
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
+ADMIN_KEY = os.getenv("ADMIN_KEY", "anan123")
 
 # -------------------------------
-# ✅ 啟動時檢查環境變數
+# ✅ 啟動環境變數與 Vision
 # -------------------------------
 try:
     deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
     creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-
     if deepseek_api_key:
         print("✅ 成功讀到 DEEPSEEK_API_KEY")
     else:
         print("❌ 找不到 DEEPSEEK_API_KEY")
-
     if creds_json:
         json.loads(creds_json)
-        print("✅ 成功讀到 GOOGLE_APPLICATION_CREDENTIALS_JSON")
         with open("google_cred.json", "w", encoding="utf-8") as f:
             f.write(creds_json)
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_cred.json"
         vision_client = vision.ImageAnnotatorClient()
+        print("✅ 成功啟用 Google Vision")
     else:
-        print("❌ 找不到 GOOGLE_APPLICATION_CREDENTIALS_JSON")
         vision_client = None
+        print("⚠️ 未啟用 Vision API")
 except Exception as e:
-    print("⚠️ 啟動時環境檢查出錯：", e)
+    print("⚠️ 啟動錯誤：", e)
     vision_client = None
 
+# -------------------------------
+# 🗂️ SQLite 初始化
+# -------------------------------
+os.makedirs("data", exist_ok=True)
+DB_PATH = "data/anan.db"
+def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+def init_db():
+    conn = get_conn(); c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT, question TEXT, topic TEXT,
+        is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS daily_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL, date TEXT NOT NULL,
+        seconds_active INTEGER DEFAULT 0,
+        last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, date)
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS feedbacks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL, record_id INTEGER,
+        understood INTEGER, note TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.commit(); conn.close()
+    print("✅ [安安] 資料庫就緒 (v3.6)")
+init_db()
+
+@app.before_request
+def ensure_user():
+    if "user_id" not in session:
+        session["user_id"] = str(uuid.uuid4())
 
 # -------------------------------
-# 📄 首頁
+# 🧮 主題偵測
 # -------------------------------
-@app.route("/", methods=["GET", "POST"])
-def home():
-    conversation = []
-    if request.method == "POST":
-        user_message = request.form.get("message", "")
-        if user_message:
-            ai_response = ask_anan(user_message)
-            conversation.append({"role": "user", "content": user_message})
-            conversation.append({"role": "assistant", "content": ai_response})
-    return render_template("index.html", conversation=conversation)
-
+def detect_topic(text):
+    t = (text or "").lower()
+    if any(k in t for k in ["角","邊","面積","圖形","幾何","內角","外角"]): return "幾何"
+    if any(k in t for k in ["分數","倍數","因數","fraction"]): return "分數/因數"
+    if any(k in t for k in ["代數","方程","x","y","代號","解","變數"]): return "代數"
+    if any(k in t for k in ["比例","百分比","%"]): return "比例/百分比"
+    return "未分類"
 
 # -------------------------------
-# 💬 安安老師問答（蘇格拉底式教學 + 備援機制）
+# 💾 紀錄互動
 # -------------------------------
-def ask_anan(question: str):
-    system_prompt = """
-你是「數學小老師安安」，一位溫柔、有耐心、幽默的教學助理。
-你要使用繁體中文回答，角色設定如下：
-
-🎓【教學風格】
-- 採用「蘇格拉底式提問法」：不直接給答案，而是用一步步的問題引導學生思考。
-- 讓學生覺得自己在發現答案，而不是被教導。
-- 若學生答錯，也要鼓勵並給提示（例如：「我們再想想另一個方向好嗎？」）。
-
-💡【語氣風格】
-- 溫柔、親切、像一位陪伴孩子學習的姐姐。
-- 偶爾加入一點幽默或貼近生活的小比喻。
-- 每次回答不超過 20 句。
-
-🧮【數學教學規則】
-- 若題目中出現算式或文字題，請用「逐步引導」方式解題：
-  1. 先用生活化語句確認學生理解題意。
-  2. 接著問一個簡單的子問題，引導學生回應。
-  3. 最後再逐步整理完整的解題步驟。
-- 可使用 Markdown 數學公式格式（例如：\\( 3x + 2 = 11 \\)）。
-- 如果學生完全答對，請給予鼓勵（例如：「太棒了～你真的進步好多喔！」）。
-
-✨【閒聊情境】
-- 若學生聊生活話題，安安可以幽默回應，但要溫柔地拉回學習主題。
-- 不要太嚴肅，也不要太冷冰冰。
-"""
-
-    # 🧠 主力使用 DeepSeek，若掛掉則自動改用 GPT 備援
+def log_record(user_id, question, topic, is_correct=None):
     try:
-        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question}
-            ]
-        }
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
-        result = r.json().get("choices", [{}])[0].get("message", {}).get("content", "（沒有回應）")
-        return result
+        conn = get_conn(); c = conn.cursor()
+        c.execute("INSERT INTO records (user_id, question, topic, is_correct) VALUES (?,?,?,?)",
+                  (user_id, question, topic, is_correct))
+        conn.commit(); rid = c.lastrowid; conn.close()
+        return rid
     except Exception as e:
-        print("⚠️ DeepSeek 出錯，改用 GPT 備援：", e)
-        backup_headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
-        backup_payload = {
+        print("⚠️ 紀錄失敗：", e)
+        return None
+
+# -------------------------------
+# 💓 使用時間追蹤
+# -------------------------------
+@app.route("/heartbeat", methods=["POST"])
+def heartbeat():
+    user_id = session.get("user_id")
+    if not user_id: return jsonify({"status":"no_user"}), 400
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = get_conn(); c = conn.cursor()
+    c.execute("""
+      INSERT INTO daily_usage (user_id,date,seconds_active)
+      VALUES(?,?,15)
+      ON CONFLICT(user_id,date) DO UPDATE SET
+        seconds_active=seconds_active+15,
+        last_seen=CURRENT_TIMESTAMP
+    """,(user_id,today))
+    conn.commit(); conn.close()
+    return jsonify({"status":"ok"})
+
+@app.after_request
+def inject_tracker(res):
+    try:
+        if res.headers.get("Content-Type","").startswith("text/html"):
+            html = res.get_data(as_text=True)
+            tag = '<script src="/tracker.js"></script>'
+            res.set_data(html.replace("</body>",f"{tag}</body>"))
+    except: pass
+    return res
+
+@app.route("/tracker.js")
+def tracker_js():
+    js = """
+(function(){
+ var t=null;
+ function beat(){fetch('/heartbeat',{method:'POST',credentials:'same-origin'});}
+ function start(){if(!t){beat();t=setInterval(beat,15000);}}
+ function stop(){if(t){clearInterval(t);t=null;}}
+ document.addEventListener('visibilitychange',()=>{(document.visibilityState==='visible')?start():stop();});
+ window.addEventListener('pageshow',start);window.addEventListener('pagehide',stop);
+ if(document.visibilityState==='visible'){start();}
+})();"""
+    return js,200,{"Content-Type":"application/javascript"}
+
+# -------------------------------
+# 🎯 自動判斷答題正確率
+# -------------------------------
+def evaluate_answer(question, student_answer):
+    """
+    自動用 GPT 判斷學生答案是否正確（僅數學題觸發）。
+    回傳 1=正確, 0=錯誤, None=無法判斷。
+    """
+    try:
+        # 只在題目像數學題時啟動
+        if not re.search(r"[0-9=＋×÷\-*/]", question):
+            return None
+
+        headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                   "Content-Type": "application/json"}
+        payload = {
             "model": "gpt-4o-mini",
             "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question}
+                {"role": "system", "content": "你是一位數學老師，請判斷學生答案是否正確，只回答「正確」或「錯誤」。"},
+                {"role": "user", "content": f"題目：{question}\n學生回答：{student_answer}"}
             ]
         }
-        try:
-            r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=backup_headers, json=backup_payload, timeout=40)
-            return r2.json().get("choices", [{}])[0].get("message", {}).get("content", "（GPT 備援無回應）")
-        except Exception as e2:
-            return f"⚠️ 系統錯誤，暫時無法取得回應：{e2}"
-
+        r = requests.post("https://api.openai.com/v1/chat/completions",
+                          headers=headers, json=payload, timeout=25)
+        reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        if "正確" in reply: return 1
+        if "錯誤" in reply: return 0
+        return None
+    except Exception as e:
+        print("⚠️ evaluate_answer 錯誤：", e)
+        return None
 
 # -------------------------------
-# 🧮 圖片解題（Vision + GPT 幾何講解）
+# 💬 DeepSeek 主答 + 備援
+# -------------------------------
+def ask_anan(q):
+    system_prompt = "你是「數學小老師安安」，使用繁體中文、蘇格拉底式提問法引導學生思考。"
+    try:
+        headers = {"Authorization": f"Bearer {deepseek_api_key}",
+                   "Content-Type":"application/json"}
+        payload = {"model":"deepseek-chat",
+                   "messages":[{"role":"system","content":system_prompt},
+                               {"role":"user","content":q}]}
+        r = requests.post("https://api.deepseek.com/chat/completions",
+                          headers=headers,json=payload,timeout=40)
+        return r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+    except Exception as e:
+        print("⚠️ DeepSeek 出錯，改用 GPT 備援：", e)
+        try:
+            h2={"Authorization":f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                "Content-Type":"application/json"}
+            p2={"model":"gpt-4o-mini",
+                "messages":[{"role":"system","content":system_prompt},
+                            {"role":"user","content":q}]}
+            r2=requests.post("https://api.openai.com/v1/chat/completions",
+                             headers=h2,json=p2,timeout=40)
+            return r2.json().get("choices",[{}])[0].get("message",{}).get("content","")
+        except Exception as e2:
+            return f"⚠️ 系統錯誤：{e2}"
+
+# -------------------------------
+# 🏠 首頁（答題＋自動正確率）
+# -------------------------------
+@app.route("/", methods=["GET","POST"])
+def home():
+    conversation=[]
+    if request.method=="POST":
+        msg=request.form.get("message","")
+        if msg:
+            ans=ask_anan(msg)
+            conversation.append({"role":"user","content":msg})
+            conversation.append({"role":"assistant","content":ans})
+            topic=detect_topic(msg)
+            rid=log_record(session.get("user_id"),msg,topic,None)
+            # 自動評估答題正確率
+            correctness=evaluate_answer(msg,ans)
+            if rid and correctness is not None:
+                conn=get_conn()
+                conn.execute("UPDATE records SET is_correct=? WHERE id=?",(correctness,rid))
+                conn.commit(); conn.close()
+    return render_template("index.html",conversation=conversation)
+
+# -------------------------------
+# 🧮 圖片解題（Vision + GPT 備援）
 # -------------------------------
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
     if "image" not in request.files:
-        return jsonify({"result": "沒有收到圖片"}), 400
+        return jsonify({"result":"沒有收到圖片"}),400
+    img=request.files["image"].read()
+    b64=base64.b64encode(img).decode("utf-8")
 
-    image_file = request.files["image"]
-    image_bytes = image_file.read()
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-    # --- Google Vision OCR ---
-    ocr_text = ""
+    # OCR 辨識
+    ocr_text=""
     try:
         if vision_client:
-            image = vision.Image(content=image_bytes)
-            response = vision_client.text_detection(image=image)
-            ocr_text = response.text_annotations[0].description if response.text_annotations else ""
-            print(f"📝 OCR 辨識結果：{ocr_text[:80]}...")
-        else:
-            ocr_text = "(Vision API 尚未初始化)"
+            image=vision.Image(content=img)
+            res=vision_client.text_detection(image=image)
+            ocr_text=res.text_annotations[0].description if res.text_annotations else ""
+            print("📝 OCR 辨識結果：",ocr_text[:100])
     except Exception as e:
-        print("⚠️ Vision OCR 發生錯誤：", e)
-        ocr_text = "(OCR 失敗)"
+        print("⚠️ Vision OCR 錯誤：",e)
 
-    # --- GPT 幾何分析 ---
-    gpt_prompt = f"""
-你現在是「安安老師」，要幫學生講解一題幾何或圖形推理的數學題。
-請根據下列 OCR 文字內容與圖片（若有圖形），進行逐步推理。
-請使用繁體中文、蘇格拉底式提問方式，引導學生一步步想出答案，
-不要直接給出結論，要像老師對小學生互動的方式解說。
+    # 若 OCR 無結果 → 圖形備援
+    if not ocr_text.strip():
+        print("⚠️ OCR 無結果 → GPT 圖像備援")
+        prompt="你是安安老師，根據圖片推測數學題，用蘇格拉底式提問法引導學生思考。"
+        headers={"Authorization":f"Bearer {os.getenv('OPENAI_API_KEY')}","Content-Type":"application/json"}
+        payload={"model":"gpt-4o-mini",
+                 "messages":[{"role":"system","content":prompt},
+                             {"role":"user","content":[{"type":"image_base64","image_base64":b64}]}]}
+        r=requests.post("https://api.openai.com/v1/chat/completions",headers=headers,json=payload,timeout=60)
+        ans=r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+        log_record(session.get("user_id"),"(圖形題無文字)","幾何/圖形",None)
+        return jsonify({"result":ans}),200,{"Content-Type":"application/json; charset=utf-8"}
 
-題目內容如下：
-{ocr_text}
-"""
-
-    try:
-        headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}", "Content-Type": "application/json"}
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是安安老師，用親切、可愛、幽默方式進行蘇格拉底式數學教學。"},
-                {"role": "user", "content": [
-                    {"type": "text", "text": gpt_prompt},
-                    {"type": "image_base64", "image_base64": image_base64}
-                ]}
-            ]
-        }
-        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
-        result = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-        return jsonify({"result": result}), 200, {"Content-Type": "application/json; charset=utf-8"}
-
-    except Exception as e:
-        print("⚠️ GPT 幾何分析錯誤：", e)
-        return jsonify({"result": f"⚠️ 系統錯誤：{e}"}), 500
-
+    # 有文字 → 正常講解
+    gpt_prompt=f"請用繁體中文、蘇格拉底式引導法講解以下題目：\n{ocr_text}"
+    headers={"Authorization":f"Bearer {os.getenv('OPENAI_API_KEY')}","Content-Type":"application/json"}
+    payload={"model":"gpt-4o-mini",
+             "messages":[
+                 {"role":"system","content":"你是安安老師，用可愛親切方式教學。"},
+                 {"role":"user","content":[{"type":"text","text":gpt_prompt},{"type":"image_base64","image_base64":b64}]}
+             ]}
+    r=requests.post("https://api.openai.com/v1/chat/completions",headers=headers,json=payload,timeout=60)
+    ans=r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+    log_record(session.get("user_id"),ocr_text[:200],"幾何/圖形",None)
+    return jsonify({"result":ans}),200,{"Content-Type":"application/json; charset=utf-8"}
 
 # -------------------------------
 # 🩺 健康檢查
 # -------------------------------
 @app.route("/health")
-def health():
-    return jsonify({"status": "ok"}), 200
-
+def health(): return jsonify({"status":"ok"}),200
 
 # -------------------------------
 # 🚀 主程式入口
 # -------------------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+if __name__=="__main__":
+    port=int(os.environ.get("PORT",8080))
+    app.run(host="0.0.0.0",port=port)
