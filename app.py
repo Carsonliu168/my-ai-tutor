@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.2：修正 Gemini 模型錯誤 + 改善圖片對話重複問題
+# v4.3：升級至 Gemini v1 API，支援 gemini-1.5-flash 正式版
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -18,12 +18,12 @@ deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 google_api_key = os.getenv("GOOGLE_API_KEY")
 
-# 初始化 Gemini
+# 初始化 Gemini（v1 API）
 try:
     import google.generativeai as genai
     if google_api_key:
         genai.configure(api_key=google_api_key)
-        print("✅ Gemini API 已就緒 (免費)")
+        print("✅ Gemini API 已就緒 (v1)")
     else:
         print("⚠️ 未設定 GOOGLE_API_KEY")
 except Exception as e:
@@ -31,11 +31,10 @@ except Exception as e:
 
 
 # -------------------------------
-# 🧠 DeepSeek 模型
+# 🧠 DeepSeek 主模型
 # -------------------------------
 def ask_anan(question: str, mode="socratic"):
     style = "採用蘇格拉底式提問法，引導學生思考，不直接給答案。" if mode == "socratic" else "用正常教學方式清楚給出解題步驟與答案。"
-
     system_prompt = f"""
 你是「數學小老師安安」，一位親切、幽默、溫柔的教學助理。
 請使用繁體中文回答。
@@ -55,7 +54,7 @@ def ask_anan(question: str, mode="socratic"):
         r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
         return r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
     except:
-        # DeepSeek 失敗則用 GPT 備援
+        # 備援 GPT
         try:
             backup_headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
             payload["model"] = "gpt-4o-mini"
@@ -66,7 +65,7 @@ def ask_anan(question: str, mode="socratic"):
 
 
 # -------------------------------
-# 📊 SQLite 資料庫：紀錄學習
+# 📊 SQLite 資料庫初始化
 # -------------------------------
 DB_PATH = "data/anan.db"
 os.makedirs("data", exist_ok=True)
@@ -87,7 +86,7 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.2)")
+    print("✅ [安安] 資料庫就緒 (v4.3)")
 init_db()
 
 
@@ -180,7 +179,7 @@ def clear():
 
 
 # -------------------------------
-# 🧮 圖片解題（Gemini 免費主力 + GPT 備援）
+# 🧮 圖片解題（Gemini v1 + GPT 備援）
 # -------------------------------
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
@@ -196,7 +195,7 @@ def analyze_image():
     if image_file.filename == '':
         return jsonify({"result": "⚠️ 沒有選擇檔案"}), 400
     if not allowed_file(image_file.filename):
-        return jsonify({"result": "⚠️ 不支援的圖片格式，請使用 PNG、JPG 或 JPEG"}), 400
+        return jsonify({"result": "⚠️ 不支援的圖片格式"}), 400
 
     try:
         image_bytes = image_file.read()
@@ -205,30 +204,21 @@ def analyze_image():
     except Exception as e:
         return jsonify({"result": f"⚠️ 讀取圖片失敗: {e}"}), 400
 
+    # 使用新版 Gemini v1
     result = None
     try:
-        print("🔵 使用 Gemini 辨識...")
-        model_names = ['gemini-1.5-flash', 'gemini-1.0-pro-vision']
-        for model_name in model_names:
-            try:
-                model = genai.GenerativeModel(
-                    model_name,
-                    generation_config={"temperature": 0.4}
-                )
-                response = model.generate_content([
-                    "你是數學老師安安，請看這道數學題目，用親切可愛的語氣逐步解題，條列清楚步驟與答案。如果圖片不清楚請明確說明。",
-                    {"mime_type": "image/jpeg", "data": image_bytes}
-                ])
-                result = response.text
-                if len(result) > 30 and not any(x in result for x in ["無法辨識", "看不清", "模糊", "unclear"]):
-                    print(f"✅ Gemini 成功! (模型: {model_name})")
-                    break
-            except Exception as e:
-                print(f"⚠️ Gemini ({model_name}) 失敗: {e}")
-                continue
+        print("🔵 使用 Gemini v1 辨識中...")
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content([
+            "你是數學老師安安，請幫我看這道數學題，用親切可愛的語氣，條列清楚步驟與答案。",
+            {"mime_type": "image/jpeg", "data": image_bytes}
+        ])
+        result = response.text
+        print("✅ Gemini v1 成功！")
     except Exception as e:
-        print(f"❌ Gemini 整體失敗: {e}")
+        print(f"⚠️ Gemini v1 失敗: {e}")
 
+    # 備援 GPT
     if not result:
         try:
             print("🟢 使用 GPT-4o-mini 備援...")
@@ -239,7 +229,7 @@ def analyze_image():
                 "messages": [{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "你是安安老師，請看這道數學題，用親切可愛的語氣一步步解釋，條列清楚步驟與答案。"},
+                        {"type": "text", "text": "你是安安老師，請幫我看這張數學題圖片，條列清楚解題步驟與答案。"},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
                     ]
                 }],
@@ -247,10 +237,10 @@ def analyze_image():
             }
             r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
             result = r.json()["choices"][0]["message"]["content"]
-            print("✅ GPT 成功!")
+            print("✅ GPT 備援成功！")
         except Exception as e:
-            print(f"❌ GPT 也失敗: {e}")
-            return jsonify({"result": "⚠️ 圖片辨識失敗，請確保圖片清晰後重試！"}), 500
+            print(f"❌ GPT 備援失敗: {e}")
+            return jsonify({"result": "⚠️ 圖片辨識失敗，請重試！"}), 500
 
     # ✅ 儲存對話
     if "conversation" not in session:
@@ -261,12 +251,10 @@ def analyze_image():
     session["conversation"] = conversation
     session.modified = True
 
-    # 儲存到資料庫
+    # 存入資料庫
     conn = get_conn()
-    conn.execute(
-        "INSERT INTO records (user_id, question, topic, is_correct) VALUES (?, ?, ?, ?)",
-        (session["user_id"], "[圖片題目]", "圖片辨識", None)
-    )
+    conn.execute("INSERT INTO records (user_id, question, topic, is_correct) VALUES (?, ?, ?, ?)",
+                 (session["user_id"], "[圖片題目]", "圖片辨識", None))
     conn.commit()
     conn.close()
 
