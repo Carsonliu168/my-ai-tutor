@@ -1,292 +1,183 @@
-# ================================
-# 📘 安安專案主程式 app.py
-# v4.3 Final：新增「我不懂」智慧教學回覆層級 + 前端整合 + 保留圖片辨識功能
-# ================================
-
-from flask import Flask, render_template, request, jsonify, redirect, session
-import os, json, base64, requests, sqlite3, uuid, re
+# =====================================================
+# 📘 安安專案主程式 app.py — Plan C 最終穩定版
+# =====================================================
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+import os, base64, requests, sqlite3, google.generativeai as genai
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制 16MB
+app.secret_key = "anan-secret-key"
 
-# -------------------------------
-# ✅ 環境變數與 API 初始化
-# -------------------------------
-deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-openai_api_key = os.getenv("OPENAI_API_KEY")
-google_api_key = os.getenv("GOOGLE_API_KEY")
-
-# 初始化 Gemini
-try:
-    import google.generativeai as genai
-    if google_api_key:
-        genai.configure(api_key=google_api_key)
-        print("✅ Gemini API 已就緒 (免費)")
-    else:
-        print("⚠️ 未設定 GOOGLE_API_KEY")
-except Exception as e:
-    print(f"⚠️ Gemini 初始化失敗: {e}")
-
-# -------------------------------
-# 🧠 DeepSeek 模型（蘇格拉底 or 正常教學）
-# -------------------------------
-def ask_anan(question: str, mode="socratic"):
-    if mode == "socratic":
-        style = "採用蘇格拉底式提問法，引導學生思考，不直接給答案。"
-    else:
-        style = "用正常教學方式清楚給出解題步驟與答案。"
-
-    system_prompt = f"""
-你是「數學小老師安安」，一位專業、親切、幽默的數學教學助理。
-請使用繁體中文回答。
-教學風格：{style}
-
-解題要求：
-1. 若是計算題，請務必逐步列出完整計算過程
-2. 若是幾何題，請先分析圖形條件，再應用定理
-3. 每個步驟都要說明理由
-4. 最後要驗證答案的合理性
-5. 用溫暖鼓勵的語氣引導學生思考
-"""
-
-    try:
-        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question}
-            ]
-        }
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
-        return r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    except:
-        try:
-            backup_headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
-            payload["model"] = "gpt-4o-mini"
-            r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=backup_headers, json=payload, timeout=40)
-            return r2.json().get("choices", [{}])[0].get("message", {}).get("content", "（無回應）")
-        except:
-            return "（無回應）"
-
-# -------------------------------
-# 📊 SQLite 資料庫初始化
-# -------------------------------
-DB_PATH = "data/anan.db"
-os.makedirs("data", exist_ok=True)
-
+# ---------- 資料庫 ----------
 def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect("data/anan.db")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            question TEXT,
+            topic TEXT,
+            is_correct INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    return conn
 
-def init_db():
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT,
-        question TEXT,
-        topic TEXT,
-        is_correct INTEGER,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
-    conn.commit()
-    conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.3 Final)")
-init_db()
+# ---------- API 金鑰 ----------
+genai.configure(api_key=os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+openai_api_key = os.environ.get("OPENAI_API_KEY")
 
-# -------------------------------
-# 🎯 答題正確率自動評估
-# -------------------------------
-def evaluate_answer(question, student_answer):
+# ---------- 首頁 ----------
+@app.route("/")
+def index():
+    session.setdefault("conversation", [])
+    return render_template("index.html", conversation=session["conversation"])
+
+# ---------- 清除對話 ----------
+@app.route("/clear")
+def clear():
+    session.pop("conversation", None)
+    return redirect(url_for("index"))
+
+# ---------- 學生輸入文字 ----------
+@app.route("/", methods=["POST"])
+def chat():
+    msg = request.form["message"].strip()
+    if not msg:
+        return redirect(url_for("index"))
+
+    # 學生訊息
+    session["conversation"].append({"role": "user", "content": msg})
+
+    # 🔹 依內容決定回覆邏輯
     try:
-        if not re.search(r"[0-9=＋×÷\-*/]", question):
-            return None
-        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是一位數學老師，請判斷學生答案是否正確，只回答「正確」或「錯誤」。"},
-                {"role": "user", "content": f"題目：{question}\n學生回答：{student_answer}"}
-            ]
-        }
-        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=25)
-        reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-        if "正確" in reply: return 1
-        if "錯誤" in reply: return 0
-        return None
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        response = model.generate_content([
+            f"你是數學老師安安。請用繁體中文一步步講解這道題：{msg}\n"
+            "若學生多次說不懂，請換不同方式講解，例如舉例或畫線思考。"
+        ])
+        reply = (response.text or "⚠️ 安安暫時想不到，請再試一次。").strip()
     except Exception as e:
-        print("⚠️ evaluate_answer 錯誤：", e)
-        return None
+        reply = f"⚠️ 解題時出現問題：{e}"
 
-# -------------------------------
-# 💬 首頁與對話邏輯
-# -------------------------------
-@app.before_request
-def ensure_user():
-    if "user_id" not in session:
-        session["user_id"] = str(uuid.uuid4())
+    session["conversation"].append({"role": "assistant", "content": reply})
+    session.modified = True
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    if "conversation" not in session:
-        session["conversation"] = []
-        session["confused_count"] = 0
-        session["understand_level"] = 0
+    return redirect(url_for("index"))
 
-    conversation = session["conversation"]
-
-    if request.method == "POST":
-        user_msg = request.form.get("message", "").strip()
-        if not user_msg:
-            return render_template("index.html", conversation=conversation)
-
-        # 🧩 智慧「我不懂」邏輯
-        if any(kw in user_msg for kw in ["不懂", "不會", "看不懂", "再說一次"]):
-            session["understand_level"] = session.get("understand_level", 0) + 1
-            level = session["understand_level"]
-
-            if level == 1:
-                ai_reply = "沒關係～老師換個說法試試看 👇"
-            elif level == 2:
-                ai_reply = "再用另一個角度解釋給你聽 💡"
-            else:
-                ai_reply = "別擔心，這次老師直接一步步列出完整算式 🧮"
-
-            conversation.append({"role": "user", "content": user_msg})
-            conversation.append({"role": "assistant", "content": ai_reply})
-            session["conversation"] = conversation
-            return render_template("index.html", conversation=conversation)
-
-        # 🧮 一般提問走原教學邏輯
-        mode = "normal" if session.get("confused_count", 0) >= 2 else "socratic"
-        ai_reply = ask_anan(user_msg, mode)
-
-        conversation.append({"role": "user", "content": user_msg})
-        conversation.append({"role": "assistant", "content": ai_reply})
-        session["conversation"] = conversation
-
-        # 儲存紀錄
-        correctness = evaluate_answer(user_msg, ai_reply)
-        conn = get_conn()
-        conn.execute(
-            "INSERT INTO records (user_id, question, topic, is_correct) VALUES (?, ?, ?, ?)",
-            (session["user_id"], user_msg, "一般", correctness)
-        )
-        conn.commit()
-        conn.close()
-
-    return render_template("index.html", conversation=conversation)
-
-# -------------------------------
-# 🧭 學生自評回饋
-# -------------------------------
+# ---------- 回饋 ----------
 @app.route("/feedback", methods=["POST"])
 def feedback():
     data = request.get_json()
     understood = data.get("understood")
-    if understood is None:
-        return jsonify({"status": "error"})
+    reply = ""
+
     if understood:
-        session["confused_count"] = 0
+        reply = "太棒了～安安替你開心 💪 你真的越來越厲害了！"
     else:
-        session["confused_count"] = session.get("confused_count", 0) + 1
-    return jsonify({"status": "ok", "confused_count": session["confused_count"]})
+        # 第三次不懂 → 強制列算式講解
+        confused_count = session.get("confused_count", 0) + 1
+        session["confused_count"] = confused_count
+        if confused_count >= 3:
+            reply = "這題我們來一步步列算式看看：先寫出條件、代入公式、計算，再觀察答案。"
+            session["confused_count"] = 0
+        else:
+            reply = "沒關係，我再用另一個方式說明一次 💭"
 
-# -------------------------------
-# 🗑️ 清除對話
-# -------------------------------
-@app.route("/clear")
-def clear():
-    session.pop("conversation", None)
-    session["confused_count"] = 0
-    session["understand_level"] = 0
-    return redirect("/")
+    session["conversation"].append({"role": "assistant", "content": reply})
+    session.modified = True
+    return jsonify({"status": "ok", "reply": reply})
 
-# -------------------------------
-# 🧮 圖片題解 (Gemini + GPT 備援)
-# -------------------------------
+# =====================================================
+# 🧮 圖片題解（Plan C 雙 Gemini + GPT-4o 備援）
+# =====================================================
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_file(fn): return '.' in fn and fn.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
     if "image" not in request.files:
         return jsonify({"result": "⚠️ 沒有收到圖片"}), 400
-
-    image_file = request.files["image"]
-    if image_file.filename == '':
-        return jsonify({"result": "⚠️ 沒有選擇檔案"}), 400
-    if not allowed_file(image_file.filename):
-        return jsonify({"result": "⚠️ 不支援的圖片格式"}), 400
-
-    image_bytes = image_file.read()
+    image = request.files["image"]
+    if image.filename == '' or not allowed_file(image.filename):
+        return jsonify({"result": "⚠️ 請選擇 PNG/JPG/JPEG 圖片"}), 400
+    image_bytes = image.read()
     if len(image_bytes) > 10 * 1024 * 1024:
-        return jsonify({"result": "⚠️ 圖片太大，請使用小於 10MB 的圖片"}), 400
+        return jsonify({"result": "⚠️ 圖片太大，請使用小於 10 MB 的圖片"}), 400
 
     result = None
-    try:
-        print("🔵 使用 Gemini 辨識中...")
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content([
-            "你是數學老師安安，請用親切可愛語氣逐步解題。",
-            {"mime_type": "image/jpeg", "data": image_bytes}
-        ])
-        result = response.text
-    except Exception as e:
-        print("⚠️ Gemini 辨識失敗：", e)
+    model_names = ['gemini-1.5-flash-latest', 'gemini-pro-vision']
 
+    # ---------- 雙 Gemini 重試 ----------
+    for model_name in model_names:
+        for attempt in range(2):
+            try:
+                print(f"🔵 使用 {model_name} 第 {attempt+1} 次嘗試")
+                model = genai.GenerativeModel(model_name)
+                res = model.generate_content([
+                    "你是台灣數學老師安安，請完整解析圖片中的數學題：\n"
+                    "1️⃣ 辨識題目與條件\n"
+                    "2️⃣ 分析幾何或算式關係\n"
+                    "3️⃣ 逐步計算並說明理由\n"
+                    "4️⃣ 檢查答案合理性\n"
+                    "5️⃣ 最後給一句鼓勵\n"
+                    "請用繁體中文，條列清楚。",
+                    {"mime_type": "image/jpeg", "data": image_bytes}
+                ])
+                text = (res.text or "").strip()
+                if len(text) > 80:
+                    result = text
+                    print(f"✅ Gemini 成功 ({model_name} 第 {attempt+1} 次)")
+                    break
+            except Exception as e:
+                print(f"⚠️ Gemini 失敗：{e}")
+                continue
+        if result:
+            break
+
+    # ---------- GPT-4o 備援 ----------
     if not result:
         try:
-            print("🟢 改用 GPT-4o 備援...")
-            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            print("🟢 啟用 GPT-4o 備援 中...")
+            image_b64 = base64.b64encode(image_bytes).decode()
             headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
             payload = {
                 "model": "gpt-4o",
                 "messages": [{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "請幫我詳細解這道數學題："},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+                        {"type": "text", "text": "你是數學老師安安，請用繁體中文詳細逐步解這道圖片題，列出算式與答案："},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
                     ]
-                }]
+                }],
+                "max_tokens": 1200
             }
-            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
+            r = requests.post("https://api.openai.com/v1/chat/completions",
+                               headers=headers, json=payload, timeout=80)
             result = r.json()["choices"][0]["message"]["content"]
+            print("✅ GPT-4o 備援成功")
         except Exception as e:
-            print("❌ GPT 備援失敗：", e)
-            return jsonify({"result": "⚠️ 圖片辨識失敗，請重試！"}), 500
+            print(f"❌ GPT 備援失敗：{e}")
+            return jsonify({"result": "⚠️ 圖片辨識失敗，請再試一次"}), 500
 
-    # 儲存對話
-    if "conversation" not in session:
-        session["conversation"] = []
-    conversation = session["conversation"]
-    conversation.append({"role": "user", "content": "📷 [上傳了數學題目圖片]"})
-    conversation.append({"role": "assistant", "content": result})
-    session["conversation"] = conversation
+    # ---------- 儲存紀錄 ----------
+    session.setdefault("conversation", [])
+    session["conversation"] += [
+        {"role": "user", "content": "📷 [上傳了數學題目圖片]"},
+        {"role": "assistant", "content": result}
+    ]
     session.modified = True
-
     conn = get_conn()
-    conn.execute("INSERT INTO records (user_id, question, topic, is_correct) VALUES (?, ?, ?, ?)",
-                 (session["user_id"], "[圖片題目]", "圖片辨識", None))
+    conn.execute(
+        "INSERT INTO records (user_id, question, topic, is_correct) VALUES (?,?,?,?)",
+        (session.get("user_id", "guest"), "[圖片題目]", "圖片辨識", None)
+    )
     conn.commit()
     conn.close()
-
     return jsonify({"result": result, "success": True}), 200
 
-# -------------------------------
-# 🩺 健康檢查
-# -------------------------------
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"}), 200
-
-# -------------------------------
-# 🚀 主程式入口
-# -------------------------------
+# ---------- 啟動 ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
+    print("✅ 安安 伺服器 啟動中... PORT=", port)
     app.run(host="0.0.0.0", port=port)
