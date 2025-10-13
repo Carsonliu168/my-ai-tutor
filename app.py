@@ -1,6 +1,7 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.3.5：全面繁體化 + 術語正規化 + 修復 /clear 路由
+# v4.3.6：加入互動式教學模板（長方形面積）；引導不超過 3 次，第 3 次直接給出標準完整解答
+# 同步保留：全面繁體化 + 術語正規化 + 修復 /clear 路由 + 圖片備援
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -48,7 +49,7 @@ def normalize_math_terms(s: str) -> str:
     return s
 
 # -------------------------------
-# 🧠 DeepSeek 模型
+# 🧠 DeepSeek / GPT 文本模型（一般題用）
 # -------------------------------
 def ask_anan(question: str, mode="socratic"):
     style = "採用蘇格拉底式提問法，引導學生思考，不直接給答案。" if mode == "socratic" else "用正常教學方式清楚給出解題步驟與答案。"
@@ -62,6 +63,7 @@ def ask_anan(question: str, mode="socratic"):
 - 術語請用中文為主（例如：最小公倍數、最大公因數、模運算），避免使用 lcm/gcd/mod 等縮寫。
 - 若出現模運算，請說明它代表取餘數的意思。
 - 用親切、鼓勵的語氣引導學生。
+- {style}
 """
 
     try:
@@ -108,8 +110,98 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.3.5)")
+    print("✅ [安安] 資料庫就緒 (v4.3.6)")
 init_db()
+
+# -------------------------------
+# 🎯 專題：長方形面積 3 步互動引導（第 3 步直接給標準解答）
+# -------------------------------
+RECTANGLE_TOPIC = "rectangle_area_v436"
+
+def detect_rectangle_area(q: str):
+    """
+    嘗試從文字中抓出「長方形 長=.. 寬=..」的數字；若抓到回傳 (L, W) int，否則 None
+    """
+    if not q:
+        return None
+    text = q.replace("：", ":").replace("，", ",").replace("。", ".")
+    # 常見敘述：長 12 公分、寬 8 公分 / 長是12、寬是8 / 長=12 寬=8
+    m = re.search(r'長方形.*?長[是為=]?\s*(\d+)\s*公?\s*分?.*?[,、與和及。\s]*寬[是為=]?\s*(\d+)\s*公?\s*分?', text)
+    if not m:
+        # 另一種順序：寬在前
+        m = re.search(r'長方形.*?寬[是為=]?\s*(\d+)\s*公?\s*分?.*?[,、與和及。\s]*長[是為=]?\s*(\d+)\s*公?\s*分?', text)
+        if m:
+            w, l = m.group(1), m.group(2)
+            return int(l), int(w)
+        return None
+    l, w = m.group(1), m.group(2)
+    return int(l), int(w)
+
+def rectangle_step_prompt(stage: int, L: int, W: int):
+    """
+    第 1～3 步的回覆文案
+    - 第 1 步：問概念（加法 or 乘法），不給答案
+    - 第 2 步：帶入公式與數字，請學生算 12×8，不給最終句
+    - 第 3 步：直接給完整標準解答（你先前貼的語氣）
+    """
+    if stage == 1:
+        return normalize_math_terms(f"""安安老師：我們一起來想想這題吧～ 😊  
+題目說：一個長方形的長是 **{L} 公分**，寬是 **{W} 公分**。  
+那你還記得長方形的**面積要怎麼算**嗎？是用**加法**還是**乘法**呢？🤔""")
+    if stage == 2:
+        return normalize_math_terms(f"""太好了～長方形的面積要用**乘法**！  
+公式是：**面積 = 長 × 寬**。  
+把數字帶進去：**{L} × {W} = ?**  
+你來算算看是多少呢？😉""")
+    # stage 3：標準完整解答（直接給出最終答案與單位）
+    area = L * W
+    return normalize_math_terms(f"""安安來幫你算這個長方形的面積喔！  
+
+長方形的面積公式是：  
+**面積 = 長 × 寬**
+
+題目給的長是 **{L} 公分**，寬是 **{W} 公分**，  
+所以我們來算一下：  
+**{L} × {W} = {area}**
+
+答案就是 **{area} 平方公分**～  
+
+很簡單對吧？記得面積的單位是「平方公分」喔！如果有其他問題，隨時問我～ 😊""")
+
+def start_rectangle_flow(L: int, W: int):
+    session["guided_topic"] = RECTANGLE_TOPIC
+    session["guided_params"] = {"L": L, "W": W}
+    session["guided_stage"] = 1
+    return rectangle_step_prompt(1, L, W)
+
+def continue_rectangle_flow(user_text: str):
+    """
+    根據目前 stage 往下推進；不超過 3 步
+    """
+    stage = int(session.get("guided_stage", 1))
+    params = session.get("guided_params", {})
+    L, W = int(params.get("L", 0)), int(params.get("W", 0))
+    if not L or not W:
+        # 安全回落
+        session.pop("guided_topic", None)
+        session.pop("guided_params", None)
+        session.pop("guided_stage", None)
+        return ask_anan(user_text, mode="socratic")
+
+    if stage <= 1:
+        session["guided_stage"] = 2
+        return rectangle_step_prompt(2, L, W)
+
+    if stage == 2:
+        session["guided_stage"] = 3
+        return rectangle_step_prompt(3, L, W)
+
+    # stage >=3：已給標準解答，結束此導引
+    session.pop("guided_topic", None)
+    session.pop("guided_params", None)
+    session.pop("guided_stage", None)
+    # 若學生再追問，回到一般回答
+    return ask_anan(user_text, mode="normal")
 
 # -------------------------------
 # 💬 主頁與回饋
@@ -129,22 +221,42 @@ def home():
     if request.method == "POST":
         user_msg = request.form.get("message", "")
         if user_msg:
-            mode = "normal" if session.get("confused_count", 0) >= 2 else "socratic"
-            ai_reply = ask_anan(user_msg, mode)
+            reply_text = None
+
+            # ① 若目前在引導「長方形面積」主題中，就走引導流程（最多 3 步）
+            if session.get("guided_topic") == RECTANGLE_TOPIC:
+                reply_text = continue_rectangle_flow(user_msg)
+
+            # ② 嘗試偵測是否為新的「長方形面積」題目，若是，啟動 3 步引導
+            if reply_text is None:
+                params = detect_rectangle_area(user_msg)
+                if params:
+                    L, W = params
+                    reply_text = start_rectangle_flow(L, W)
+
+            # ③ 其他一般題目 → 走既有的 Socratic/normal 策略
+            if reply_text is None:
+                mode = "normal" if session.get("confused_count", 0) >= 2 else "socratic"
+                reply_text = ask_anan(user_msg, mode)
+
+            # 記錄對話
             conversation.append({"role": "user", "content": user_msg})
-            conversation.append({"role": "assistant", "content": ai_reply})
+            conversation.append({"role": "assistant", "content": reply_text})
             session["conversation"] = conversation
 
+            # 紀錄 DB
             conn = get_conn()
             conn.execute("INSERT INTO records (user_id, question, topic, is_correct) VALUES (?, ?, ?, ?)",
-                         (session["user_id"], user_msg, "一般", None))
+                         (session["user_id"], user_msg,
+                          "長方形面積" if session.get("guided_topic") == RECTANGLE_TOPIC else "一般",
+                          None))
             conn.commit()
             conn.close()
 
     return render_template("index.html", conversation=conversation)
 
 # -------------------------------
-# 🧭 學生回饋邏輯
+# 🧭 學生回饋邏輯（保留）
 # -------------------------------
 @app.route("/feedback", methods=["POST"])
 def feedback():
@@ -173,6 +285,10 @@ def feedback():
 def clear():
     session.pop("conversation", None)
     session["confused_count"] = 0
+    # 結束任何正在進行的引導
+    session.pop("guided_topic", None)
+    session.pop("guided_params", None)
+    session.pop("guided_stage", None)
     return redirect("/")
 
 # -------------------------------
