@@ -1,12 +1,14 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.1：修正圖片上傳對話儲存問題 + 完整錯誤處理
+# v4.2：保留原功能 + 加入「三層不懂教學回饋機制」
 #       DeepSeek 主答 + Gemini 免費圖片辨識 + GPT 備援
+#       修正「不懂」只加計數不產生教學行為的問題
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
 import os, json, base64, requests, sqlite3, uuid, re
 from datetime import datetime
+import random
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
@@ -97,7 +99,7 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.1)")
+    print("✅ [安安] 資料庫就緒 (v4.2)")
 init_db()
 
 
@@ -133,24 +135,35 @@ def evaluate_answer(question, student_answer):
 def ensure_user():
     if "user_id" not in session:
         session["user_id"] = str(uuid.uuid4())
+    # 初始化必要狀態（避免 KeyError）
+    session.setdefault("conversation", [])
+    session.setdefault("confused_count", 0)
+    session.setdefault("last_question", None)      # ⬅️ 新增：記錄最新題目（文字或圖片題占位）
+    session.setdefault("last_explanation", None)   # ⬅️ 新增：記錄最新的 AI 講解
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-    if "conversation" not in session:
-        session["conversation"] = []
-        session["confused_count"] = 0
     conversation = session["conversation"]
 
     if request.method == "POST":
-        user_msg = request.form.get("message", "")
+        user_msg = request.form.get("message", "").strip()
         if user_msg:
+            # 記錄最後一道題（文字輸入）
+            session["last_question"] = user_msg
+
+            # 根據 confused_count 切換教學模式（保留原邏輯）
             mode = "normal" if session.get("confused_count", 0) >= 2 else "socratic"
             ai_reply = ask_anan(user_msg, mode)
 
+            # 記錄最後一次講解，供「不懂」重教使用
+            session["last_explanation"] = ai_reply
+
+            # 更新對話
             conversation.append({"role": "user", "content": user_msg})
             conversation.append({"role": "assistant", "content": ai_reply})
             session["conversation"] = conversation
 
+            # 紀錄正確性
             correctness = evaluate_answer(user_msg, ai_reply)
             conn = get_conn()
             conn.execute(
@@ -164,19 +177,90 @@ def home():
 
 
 # -------------------------------
-# 🧭 學生自評回饋
+# 🧭 學生自評回饋（修：加入三層不懂教學邏輯）
 # -------------------------------
 @app.route("/feedback", methods=["POST"])
 def feedback():
+    """
+    前端：按「我懂了 / 我不懂」會呼叫此端點
+    舊行為：只調整 confused_count
+    新行為：
+      - 懂了：歸零 + 回傳鼓勵語
+      - 不懂：計數 + 直接生成下一層教學內容（不用學生再打字）
+    """
     data = request.get_json()
     understood = data.get("understood")
     if understood is None:
-        return jsonify({"status": "error"})
+        return jsonify({"status": "error", "msg": "缺少 understood 參數"})
+
+    # 取用最新題目與講解
+    current_question = session.get("last_question")
+    previous_explanation = session.get("last_explanation")
+
     if understood:
         session["confused_count"] = 0
+        encouragements = [
+            "太棒了！安安老師為你鼓掌 👏",
+            "非常好～繼續保持這個思考方式！💪",
+            "厲害！你真的越來越懂數學了！🌟"
+        ]
+        msg = random.choice(encouragements)
+        return jsonify({"status": "ok", "confused_count": 0, "reply": msg})
+
+    # 不懂 → 層級 +1，並根據層級生成對應教學
+    level = session.get("confused_count", 0) + 1
+    session["confused_count"] = level
+
+    # 若找不到題目（例如直接按了不懂），避免亂串舊記憶
+    if not current_question and not previous_explanation:
+        return jsonify({
+            "status": "ok",
+            "confused_count": level,
+            "reply": "先把題目（或再上傳一次圖片）給我，我會換一種方式重新帶你理解！"
+        })
+
+    # 三層不懂回饋邏輯
+    if level == 1:
+        prompt = f"""
+學生第一次表示不懂。
+請針對以下題目，換一種教法（舉生活例子、比喻、或更白話的說法）重新講解。
+題目：{current_question or "[圖片題目]"}
+前一次講解（供你參考，避免重複同樣說法）：{previous_explanation or "(無)"}
+請保持條列步驟，避免一次給太多資訊。
+"""
+        mode = "socratic"
+    elif level == 2:
+        prompt = f"""
+學生第二次仍不懂。
+請提供逐步提示，引導他自己推理，不要直接給答案。
+題目：{current_question or "[圖片題目]"}
+提示方式：每一步只做一個小動作，等待學生回應的口吻。
+"""
+        mode = "socratic"
     else:
-        session["confused_count"] = session.get("confused_count", 0) + 1
-    return jsonify({"status": "ok", "confused_count": session["confused_count"]})
+        prompt = f"""
+學生第三次仍不懂。
+請直接列出完整算式與解題步驟（Step 1/2/3），並用簡短語句說明每一步為什麼這樣做。
+題目：{current_question or "[圖片題目]"}
+請在最後用一句話幫他檢核答案的合理性。
+"""
+        mode = "normal"
+
+    ai_reply = ask_anan(prompt, mode)
+
+    # 記錄這次講解，供後續再次「不懂」使用
+    session["last_explanation"] = ai_reply
+
+    # 寫入對話（顯示為系統教學追加）
+    conv = session.get("conversation", [])
+    conv.append({"role": "assistant", "content": ai_reply})
+    session["conversation"] = conv
+
+    return jsonify({
+        "status": "ok",
+        "confused_count": level,
+        "reply": f"安安老師：\n{ai_reply}"
+    })
 
 
 # -------------------------------
@@ -186,6 +270,8 @@ def feedback():
 def clear():
     session.pop("conversation", None)
     session["confused_count"] = 0
+    session["last_question"] = None         # ⬅️ 同步清除
+    session["last_explanation"] = None      # ⬅️ 同步清除
     return redirect("/")
 
 
@@ -213,11 +299,8 @@ def analyze_image():
 
     try:
         image_bytes = image_file.read()
-        
-        # 檢查檔案大小 (最大 10MB)
         if len(image_bytes) > 10 * 1024 * 1024:
             return jsonify({"result": "⚠️ 圖片太大，請使用小於 10MB 的圖片"}), 400
-        
     except Exception as e:
         return jsonify({"result": f"⚠️ 讀取圖片失敗: {e}"}), 400
     
@@ -227,10 +310,7 @@ def analyze_image():
     result = None
     try:
         print("🔵 使用 Gemini 辨識...")
-        
-        # 嘗試多個模型名稱
         model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro-vision']
-        
         for model_name in model_names:
             try:
                 model = genai.GenerativeModel(model_name)
@@ -238,10 +318,7 @@ def analyze_image():
                     "你是數學老師安安，請看這道數學題目，用親切可愛的語氣逐步解題，條列清楚步驟與答案。如果圖片不清楚請明確說明。",
                     {"mime_type": "image/jpeg", "data": image_bytes}
                 ])
-                
                 result = response.text
-                
-                # 判斷品質
                 if len(result) > 30 and not any(x in result for x in ["無法辨識", "看不清", "模糊", "unclear"]):
                     print(f"✅ Gemini 成功! (使用模型: {model_name})")
                     break
@@ -251,23 +328,20 @@ def analyze_image():
             except Exception as e:
                 print(f"⚠️ Gemini ({model_name}) 失敗: {e}")
                 continue
-                
     except Exception as e:
         print(f"❌ Gemini 整體失敗: {e}")
     
     # ========================================
-    # 第二層：備援用 GPT-4o-mini
+    # 第二層：備援用 GPT-4o
     # ========================================
     if not result:
         try:
-            print("🟢 使用 GPT-4o-mini 備援...")
+            print("🟢 使用 GPT-4o 備援...")
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-            
             headers = {
                 "Authorization": f"Bearer {openai_api_key}",
                 "Content-Type": "application/json"
             }
-            
             payload = {
                 "model": "gpt-4o",
                 "messages": [{
@@ -287,25 +361,15 @@ def analyze_image():
                         },
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}"
-                            }
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
                         }
                     ]
                 }],
                 "max_tokens": 1000
             }
-            
-            r = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
-            
+            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
             result = r.json()["choices"][0]["message"]["content"]
             print("✅ GPT 成功!")
-            
         except Exception as e:
             print(f"❌ GPT 也失敗: {e}")
             return jsonify({"result": f"⚠️ 圖片辨識失敗，請確保圖片清晰後重試！"}), 500
@@ -313,15 +377,17 @@ def analyze_image():
     # ========================================
     # ✅ 儲存對話到 session 和資料庫
     # ========================================
-    if "conversation" not in session:
-        session["conversation"] = []
-    
     conversation = session["conversation"]
     conversation.append({"role": "user", "content": "📷 [上傳了數學題目圖片]"})
     conversation.append({"role": "assistant", "content": result})
     session["conversation"] = conversation
-    session.modified = True  # 確保 session 更新
-    
+    session.modified = True
+
+    # ⬅️ 重要：為「不懂」回饋準備上下文
+    session["last_question"] = "[圖片題目]"         # 圖片題無純文字，先用占位
+    session["last_explanation"] = result
+    session["confused_count"] = 0                   # 圖片題講解剛產生，重新計算
+
     # 儲存到資料庫
     conn = get_conn()
     conn.execute(
@@ -347,4 +413,7 @@ def health():
 # -------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
+    print(f"✅ 成功讀到 DEEPSEEK_API_KEY：{bool(deepseek_api_key)}")
+    print(f"✅ 成功讀到 OPENAI_API_KEY：{bool(openai_api_key)}")
+    print(f"✅ 成功讀到 GOOGLE_API_KEY：{bool(google_api_key)}")
     app.run(host="0.0.0.0", port=port)
