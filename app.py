@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.3.4：繁體中文鎖定 + 術語正規化（mod/lcm/gcd/簡體）
+# v4.3.5：全面繁體化 + 術語正規化 + 修復 /clear 路由
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -108,7 +108,7 @@ def init_db():
     )""")
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.3.4)")
+    print("✅ [安安] 資料庫就緒 (v4.3.5)")
 init_db()
 
 # -------------------------------
@@ -165,6 +165,15 @@ def feedback():
         else:
             reply = ask_anan("請直接用最簡單明確的方式重講上一題，列出算式與答案。", mode="normal")
     return jsonify({"status": "ok", "reply": normalize_math_terms(reply)})
+
+# -------------------------------
+# 🗑️ 清除對話（修復 404）
+# -------------------------------
+@app.route("/clear")
+def clear():
+    session.pop("conversation", None)
+    session["confused_count"] = 0
+    return redirect("/")
 
 # -------------------------------
 # 🧮 圖片解題（Gemini + GPT 備援）
