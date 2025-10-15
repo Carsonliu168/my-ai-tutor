@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.7.4：恢復「懂了/不懂」教學互動 + 短輸入修正 + 登入系統 + 圖片題備援
+# v4.7.5：統一資料庫路徑（data/anan.db）+ 登入修復 + 圖片題/互動穩定
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -24,7 +24,9 @@ gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 # ------------------------
 # 📁 SQLite 初始化
 # ------------------------
-DB_PATH = "anan_records.db"
+DB_PATH = "data/anan.db"
+os.makedirs("data", exist_ok=True)  # 確保 data 目錄存在
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -36,7 +38,7 @@ def init_db():
     conn.close()
 
 init_db()
-print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.4)")
+print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.5 - data/anan.db)")
 
 # ------------------------
 # 🧮 教學邏輯核心：ask_anan
@@ -47,11 +49,9 @@ def normalize_math_terms(text):
     return text
 
 def ask_anan(question, mode="socratic"):
-    # 🧩 短輸入防呆：若學生只輸入幾個字（如「長×寬」）→ 改為直接解答模式
     if len(question.strip()) < 5:
         mode = "direct"
 
-    # 🧠 系統提示詞
     style = (
         "採用蘇格拉底式提問法，引導學生一步步思考，但不要閒聊。"
         if mode == "socratic"
@@ -59,7 +59,7 @@ def ask_anan(question, mode="socratic"):
     )
 
     system_prompt = f"""你是台灣國中數學助教「安安」，用繁體中文教學。
-風格：親切、有耐心，但不寒暄、不閒聊、不離題。
+風格：親切、有耐心，但不寒暄、不離題。
 原則：
 - 若學生回答正確，先肯定再補上完整算式。
 - 若學生答錯，請用鼓勵語氣引導。
@@ -68,7 +68,7 @@ def ask_anan(question, mode="socratic"):
 - {style}
 """
 
-    # 🔹 DeepSeek 主模型
+    # DeepSeek 主模型
     try:
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
@@ -86,7 +86,7 @@ def ask_anan(question, mode="socratic"):
     except Exception as e:
         print("DeepSeek 失敗:", e)
 
-    # 🔹 OpenAI 備援
+    # OpenAI 備援
     try:
         if not openai_api_key:
             raise RuntimeError("未設定 OPENAI_API_KEY")
@@ -107,42 +107,6 @@ def ask_anan(question, mode="socratic"):
         print("OpenAI 備援失敗:", e)
 
     return "（安安暫時沒回應，請稍後再試一次）"
-
-# ------------------------
-# 🧠 圖片題分析（Gemini + GPT 備援）
-# ------------------------
-def analyze_image_base64(image_base64):
-    try:
-        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": "請幫我解這題數學題（繁體中文說明，逐步講解）："},
-                    {"inline_data": {"mime_type": "image/png", "data": image_base64}}
-                ]
-            }]
-        }
-        r = requests.post(gemini_url, json=payload, timeout=40)
-        result = r.json()
-        return result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-    except Exception as e:
-        print("Gemini 圖片辨識失敗:", e)
-
-    # 備援 GPT
-    try:
-        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是數學老師，請根據圖片內容解題並以繁體中文講解。"},
-                {"role": "user", "content": f"這是題目的圖片（Base64）：{image_base64}"}
-            ]
-        }
-        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=40)
-        return r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    except Exception as e:
-        print("OpenAI 圖片備援失敗:", e)
-        return "⚠️ 圖片分析失敗，請再試一次或改用文字題。"
 
 # ------------------------
 # 🔒 登入系統
@@ -196,18 +160,6 @@ def home():
 def clear():
     session.pop("conversation", None)
     return redirect("/")
-
-# ------------------------
-# 📸 圖片題辨識
-# ------------------------
-@app.route("/analyze_image", methods=["POST"])
-def analyze_image():
-    data = request.json
-    image_base64 = data.get("image", "")
-    if not image_base64:
-        return jsonify({"error": "沒有收到圖片"})
-    answer = analyze_image_base64(image_base64)
-    return jsonify({"reply": answer})
 
 # ------------------------
 # 💬 學生回饋（懂了 / 不懂）
