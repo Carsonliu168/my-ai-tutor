@@ -1,18 +1,25 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.5.3：不懂三次後建議請教老師 + 智慧判斷「不懂」類型
+# v4.6-login-DB：新增 users 登入資料表（帳號、密碼、使用期限）
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
 import os, json, base64, requests, sqlite3, uuid, re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制 16MB
 
 # -------------------------------
-# ✅ 環境變數與 API 初始化
+# ✅ 登入設定
+# -------------------------------
+session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
+app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
+DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
+
+# -------------------------------
+# ✅ API 初始化
 # -------------------------------
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -82,14 +89,39 @@ def ask_anan(question, mode="socratic"):
 DB_PATH = "data/anan.db"
 os.makedirs("data", exist_ok=True)
 def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+
 def init_db():
-    conn = get_conn(); c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS records(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT, question TEXT, topic TEXT,
-    is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-    conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.5.3)")
+    conn = get_conn()
+    c = conn.cursor()
+
+    # 學習紀錄表
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        question TEXT,
+        topic TEXT,
+        is_correct INTEGER,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # 使用者登入表
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        expire_date TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+    print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.6-login-DB)")
+
 init_db()
 
 # -------------------------------
@@ -98,7 +130,6 @@ init_db()
 TEACHER_HINT = "安安發現你還是有點困惑，這很正常喔。建議你把這題抄下來，明天上課時問老師，他一定會替你解釋得更仔細！"
 
 def next_help_response(counter_name):
-    """控制第1~4次不懂的回應"""
     c = session.get(counter_name, 0) + 1
     session[counter_name] = c
     if c == 1:
@@ -160,6 +191,7 @@ def analyze_image():
 @app.before_request
 def ensure_user():
     if "user_id" not in session: session["user_id"]=str(uuid.uuid4())
+    session.permanent = True
 
 @app.route("/", methods=["GET","POST"])
 def home():
@@ -170,7 +202,6 @@ def home():
         msg=request.form.get("message","").strip()
         if not msg: return render_template("index.html",conversation=convo)
 
-        # 1️⃣ 純不懂：進入計數邏輯
         if is_pure_help_phrase(msg):
             if session.get("guided_topic")=="image_explain":
                 reply = next_help_response("image_confused_count")
@@ -181,7 +212,6 @@ def home():
             session["conversation"]=convo
             return render_template("index.html",conversation=convo)
 
-        # 2️⃣ 有內容的不懂（例：「我不懂為什麼要除以2」）→ 正常回答
         session["confused_count"]=0
         session["image_confused_count"]=0
 
@@ -198,7 +228,7 @@ def home():
     return render_template("index.html",conversation=session["conversation"])
 
 # -------------------------------
-# 🧭 feedback 按鈕版
+# 🧭 feedback 按鈕
 # -------------------------------
 @app.route("/feedback", methods=["POST"])
 def feedback():
