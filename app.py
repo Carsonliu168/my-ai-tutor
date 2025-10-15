@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.7.7：自動相容舊版 records 資料表 + 自動建立管理員 + 登入修復
+# v4.7.8：UTF-8 修復 + /analyze_image route + 完整繁體
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -23,7 +23,6 @@ os.makedirs("data", exist_ok=True)
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # 只在不存在時建立新版表；若舊表已存在就不動它（避免破壞舊資料）
     c.execute("""
     CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +31,6 @@ def init_db():
         role TEXT,
         created_at TEXT
     )""")
-    # 盡量建立新版 records；舊專案已存在同名表時，這句不會覆蓋，所以仍保留舊結構
     c.execute("""
     CREATE TABLE IF NOT EXISTS records(
         id TEXT PRIMARY KEY,
@@ -50,15 +48,13 @@ def seed_admin():
     conn = sqlite3.connect(DB_PATH); c = conn.cursor()
     c.execute("SELECT 1 FROM users WHERE username='anan_admin'")
     if not c.fetchone():
-        c.execute(
-            "INSERT INTO users (username, password, role, created_at) VALUES ('anan_admin','1234','admin',datetime('now'))"
-        )
+        c.execute("INSERT INTO users (username, password, role, created_at) VALUES ('anan_admin','1234','admin',datetime('now'))")
         conn.commit()
         print("✅ 已自動建立管理員帳號：anan_admin / 密碼 1234")
     conn.close()
 
 seed_admin()
-print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.7)")
+print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.8)")
 
 # ---- 工具
 def normalize_math_terms(text):
@@ -67,6 +63,7 @@ def normalize_math_terms(text):
     text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
     return text
 
+# ---- 主模型邏輯
 def ask_anan(question, mode="socratic"):
     if len((question or "").strip()) < 5:
         mode = "direct"
@@ -137,7 +134,7 @@ def logout():
     session.pop("user", None)
     return redirect("/login")
 
-# ---- 首頁互動（含舊表相容寫入）
+# ---- 首頁互動
 @app.route("/", methods=["GET","POST"])
 def home():
     if "user" not in session:
@@ -148,26 +145,46 @@ def home():
 
         conn = sqlite3.connect(DB_PATH); c = conn.cursor()
         try:
-            # 嘗試寫入「新版 records 結構」
             c.execute("INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
                       (str(uuid.uuid4()), session["user"], msg, reply, 1, datetime.now().isoformat()))
             conn.commit()
         except sqlite3.Error as e:
-            # 自動相容到「舊版 records 結構」：id INTEGER、自動 timestamp、欄位 user_id/topic/is_correct
-            try:
-                c.execute("INSERT INTO records (user_id,question,topic,is_correct) VALUES (?,?,?,?)",
-                          (session["user"], msg, "一般", None))
-                conn.commit()
-                print("ℹ️ 已自動以舊版 records 結構寫入一筆紀錄")
-            except sqlite3.Error as e2:
-                print("⚠️ 寫入 records 失敗：", e, " / fallback:", e2)
+            print("⚠️ 寫入 records 失敗：", e)
         finally:
             conn.close()
 
         return jsonify({"reply": reply})
     return render_template("index.html")
 
-# ---- 清除對話（僅清 session，與 DB 無關）
+# ---- 圖片辨識
+@app.route("/analyze_image", methods=["POST"])
+def analyze_image():
+    try:
+        image = request.files.get("image")
+        if not image:
+            return jsonify({"result": "⚠️ 沒有收到圖片"})
+        img_bytes = base64.b64encode(image.read()).decode("utf-8")
+
+        # 使用 Gemini OCR 辨識
+        headers = {"Authorization": f"Bearer {gemini_api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "gemini-1.5-flash",
+            "contents": [{"role":"user","parts":[{"mime_type":"image/jpeg","data":img_bytes}]}]
+        }
+        r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+                          headers=headers, json=payload, timeout=60)
+        text = r.json().get("candidates",[{}])[0].get("content",{}).get("parts",[{}])[0].get("text","")
+
+        if not text:
+            text = "⚠️ 無法從圖片辨識出文字，請再拍清楚一點。"
+
+        answer = ask_anan(text, mode="direct")
+        return jsonify({"result": answer})
+    except Exception as e:
+        print("❌ analyze_image 失敗:", e)
+        return jsonify({"result": "⚠️ 圖片分析發生錯誤"})
+
+# ---- 清除對話
 @app.route("/clear")
 def clear():
     session.pop("conversation", None)
@@ -177,10 +194,10 @@ def clear():
 @app.route("/feedback", methods=["POST"])
 def feedback():
     data = request.get_json(silent=True) or {}
-    fb = data.get("feedback","")
-    if fb == "understood":
+    understood = data.get("understood", None)
+    if understood is True:
         return jsonify({"reply":"太棒了～安安替你開心 💪"})
-    if fb == "confused":
+    elif understood is False:
         return jsonify({"reply":"沒關係，我再簡單講一次：記得公式與步驟才是關鍵喔～"})
     return jsonify({"reply":"收到你的回饋，謝謝！"})
 

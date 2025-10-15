@@ -87,60 +87,73 @@
   </div>
 
   <script>
-    const chat=document.getElementById("chatContainer");
-    const thinkingEl=document.getElementById("thinking");
-    const imageInput=document.getElementById("imageInput");
-    const previewArea=document.getElementById("previewArea");
-    const previewImage=document.getElementById("previewImage");
+    const chat = document.getElementById("chatContainer");
+    const thinkingEl = document.getElementById("thinking");
+    const imageInput = document.getElementById("imageInput");
+    const previewArea = document.getElementById("previewArea");
+    const previewImage = document.getElementById("previewImage");
 
-    function scrollToBottom(){chat.scrollTop=chat.scrollHeight;}
+    function scrollToBottom() {
+      chat.scrollTop = chat.scrollHeight;
+    }
 
-    document.getElementById("textForm").addEventListener("submit",()=>{thinkingEl.style.display="block";scrollToBottom();});
-
-    imageInput.addEventListener("change",async(event)=>{
-      const file=event.target.files[0];
-      if(!file)return;
-      previewArea.classList.remove("fade-out");
-      previewImage.src=URL.createObjectURL(file);
-      previewArea.style.display="block";
-      thinkingEl.textContent="🔍 安安老師正在仔細看圖片，請稍候喔～";
-      thinkingEl.style.display="block";
+    document.getElementById("textForm").addEventListener("submit", () => {
+      thinkingEl.style.display = "block";
       scrollToBottom();
-      const formData=new FormData();
-      formData.append("image",file);
-      try{
-        const res=await fetch("/analyze_image",{method:"POST",body:formData});
-        const data=await res.json();
-        thinkingEl.style.display="none";
-        const decoded=decodeURIComponent(escape(data.result||"⚠️ 無回應"));
-        addMessage("assistant",decoded);
-        setTimeout(()=>{previewArea.classList.add("fade-out");setTimeout(()=>{previewArea.style.display="none";},1000);},10000);
-      }catch{
-        thinkingEl.style.display="none";addMessage("assistant","⚠️ 圖片上傳或辨識失敗，請重試！");
+    });
+
+    imageInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      previewArea.classList.remove("fade-out");
+      previewImage.src = URL.createObjectURL(file);
+      previewArea.style.display = "block";
+      thinkingEl.textContent = "🔍 安安老師正在仔細看圖片，請稍候喔～";
+      thinkingEl.style.display = "block";
+      scrollToBottom();
+      const formData = new FormData();
+      formData.append("image", file);
+      try {
+        const res = await fetch("/analyze_image", { method: "POST", body: formData });
+        const data = await res.json();
+        thinkingEl.style.display = "none";
+        addMessage("assistant", data.result || "⚠️ 無回應");
+        setTimeout(() => {
+          previewArea.classList.add("fade-out");
+          setTimeout(() => { previewArea.style.display = "none"; }, 1000);
+        }, 10000);
+      } catch {
+        thinkingEl.style.display = "none";
+        addMessage("assistant", "⚠️ 圖片上傳或辨識失敗，請重試！");
       }
     });
 
-    function addMessage(role,text,type=""){
-      const div=document.createElement("div");
-      div.className=`message ${role}`;
-      if(type)div.classList.add(type);
-      div.innerHTML=`<div class="message-header">${role==="user"?"你":"安安老師"}：</div><div class="message-content">${text}</div>`;
+    function addMessage(role, text, type = "") {
+      const div = document.createElement("div");
+      div.className = `message ${role}`;
+      if (type) div.classList.add(type);
+      div.innerHTML = `<div class="message-header">${role === "user" ? "你" : "安安老師"}：</div><div class="message-content">${text}</div>`;
       chat.appendChild(div);
-      if(window.MathJax&&window.MathJax.typesetPromise) MathJax.typesetPromise();
+      if (window.MathJax && window.MathJax.typesetPromise) MathJax.typesetPromise();
       scrollToBottom();
     }
 
-    async function sendFeedback(understood){
-      thinkingEl.style.display="block";
-      try{
-        const res=await fetch("/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({understood})});
-        const data=await res.json();
-        thinkingEl.style.display="none";
-        const msg=decodeURIComponent(escape(data.reply||(understood?"太棒了～安安替你開心 💪":"沒關係，我們再一起想想吧 💭")));
-        const type=understood?"encouragement":"explanation";
-        addMessage("assistant",msg,type);
-      }catch{
-        thinkingEl.style.display="none";alert("⚠️ 回饋失敗，請稍後再試。");
+    async function sendFeedback(understood) {
+      thinkingEl.style.display = "block";
+      try {
+        const res = await fetch("/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ understood })
+        });
+        const data = await res.json();
+        thinkingEl.style.display = "none";
+        const msg = data.reply || (understood ? "太棒了～安安替你開心 💪" : "沒關係，我們再一起想想吧 💭");
+        const type = understood ? "encouragement" : "explanation";
+        addMessage("assistant", msg, type);
+      } catch {
+        thinkingEl.style.display = "none";
+        alert("⚠️ 回饋失敗，請稍後再試。");
       }
     }
 
