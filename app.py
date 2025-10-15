@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.7.1：修復桌機登入問題（Cookie 設定），保留所有功能
+# v4.7.2：修復桌機登入 Cookie + 補回 ask_anan 函式（DeepSeek / GPT 備援）
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -20,11 +20,11 @@ app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
 
 # -------------------------------
-# 🔒 Cookie 修正（修復桌機登入問題）
+# 🔒 Cookie 修正（桌機登入修復）
 # -------------------------------
 app.config['SESSION_COOKIE_NAME'] = 'anan_session'
-app.config['SESSION_COOKIE_SECURE'] = True          # 僅限 HTTPS
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'      # 允許跨網域 cookie（for www 子網域）
+app.config['SESSION_COOKIE_SECURE'] = True          # 只允許 HTTPS
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'      # 允許跨域（www 子網域）
 app.config['SESSION_COOKIE_DOMAIN'] = '.weshareai.tw'  # 主網域共用 cookie
 
 # -------------------------------
@@ -63,7 +63,7 @@ def is_pure_help_phrase(msg: str) -> bool:
     return bool(re.fullmatch(r'\s*(我不會|不會|不懂|看不懂)\s*', msg or ""))
 
 # -------------------------------
-# 🗃️ SQLite
+# 🗃️ SQLite 初始化
 # -------------------------------
 DB_PATH = "data/anan.db"
 os.makedirs("data", exist_ok=True)
@@ -72,7 +72,6 @@ def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
 def init_db():
     conn = get_conn()
     c = conn.cursor()
-
     c.execute("""
     CREATE TABLE IF NOT EXISTS records(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,9 +80,7 @@ def init_db():
         topic TEXT,
         is_correct INTEGER,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
+    )""")
     c.execute("""
     CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,11 +89,9 @@ def init_db():
         start_date TEXT NOT NULL,
         expire_date TEXT NOT NULL,
         is_active INTEGER DEFAULT 1
-    )
-    """)
-
+    )""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.1)")
+    print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.2)")
 
 init_db()
 
@@ -128,6 +123,47 @@ def seed_admin_from_env():
             print("⚠️ 建立初始管理員失敗：", e)
 
 seed_admin_from_env()
+
+# -------------------------------
+# 🧠 DeepSeek / GPT 備援（主教學模型）
+# -------------------------------
+def ask_anan(question, mode="socratic"):
+    style = "採用蘇格拉底式提問法，引導學生思考。" if mode=="socratic" else "用清楚步驟給出答案。"
+    system_prompt = f"""你是台灣數學小老師安安。
+請使用繁體中文（臺灣用語），親切、幽默地教學。
+教學規範：
+- 術語用中文（最小公倍數、最大公因數、模運算等）。
+- 用鼓勵的語氣引導學生。
+- {style}
+"""
+    try:
+        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [{"role":"system","content":system_prompt},{"role":"user","content":question}],
+            "temperature":0.3
+        }
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
+        reply = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+        if reply:
+            return normalize_math_terms(reply)
+    except Exception as e:
+        print("DeepSeek 失敗:", e)
+    try:
+        if not openai_api_key: raise RuntimeError("未設定 OPENAI_API_KEY")
+        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+        payload2 = {
+            "model":"gpt-4o-mini",
+            "messages":[{"role":"system","content":system_prompt},{"role":"user","content":question}],
+            "temperature":0.3
+        }
+        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=40)
+        reply = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+        if reply:
+            return normalize_math_terms(reply)
+    except Exception as e:
+        print("OpenAI 備援失敗:", e)
+    return "（無回應）"
 
 # -------------------------------
 # 🔐 登入驗證＋導向
@@ -165,7 +201,6 @@ def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-
         u = get_user(username)
         if not u:
             error = "帳號或密碼錯誤"
@@ -197,19 +232,12 @@ def home():
     if request.method=="POST":
         msg=request.form.get("message","").strip()
         if not msg: return render_template("index.html",conversation=convo)
-
         if is_pure_help_phrase(msg):
-            if session.get("guided_topic")=="image_explain":
-                reply = next_help_response("image_confused_count")
-            else:
-                reply = next_help_response("confused_count")
+            reply = "沒關係，我再簡單講一次：找對公式→代入數字→計算→加單位。"
             convo.append({"role":"user","content":msg})
             convo.append({"role":"assistant","content":normalize_math_terms(reply)})
             session["conversation"]=convo
             return render_template("index.html",conversation=convo)
-
-        session["confused_count"]=0
-        session["image_confused_count"]=0
 
         reply = ask_anan(msg, mode="socratic")
         convo.append({"role":"user","content":msg})
@@ -218,47 +246,10 @@ def home():
 
         conn=get_conn()
         conn.execute("INSERT INTO records (user_id,question,topic,is_correct) VALUES (?,?,?,?)",
-                     (session["user_id"],msg,session.get("guided_topic","一般"),None))
+                     (session["user_id"],msg,"一般",None))
         conn.commit(); conn.close()
 
     return render_template("index.html",conversation=session["conversation"])
-
-# -------------------------------
-# 🧭 feedback 與 clear
-# -------------------------------
-TEACHER_HINT = "安安發現你還是有點困惑，這很正常喔。建議你把這題抄下來，明天上課時問老師，他一定會替你解釋得更仔細！"
-
-def next_help_response(counter_name):
-    c = session.get(counter_name, 0) + 1
-    session[counter_name] = c
-    if c == 1:
-        return "沒關係，我再簡單講一次：找對公式→代入數字→計算→加單位。"
-    elif c == 2:
-        return "我們換個說法試試～你記得剛剛的公式是哪一個嗎？"
-    elif c == 3:
-        return ask_anan("請直接用最簡單方式重講上一題，清楚列出公式、代入與答案。", mode="normal")
-    else:
-        session[counter_name] = 3
-        return TEACHER_HINT
-
-@app.route("/feedback", methods=["POST"])
-def feedback():
-    d=request.get_json(); under=d.get("understood")
-    if under is None: return jsonify({"status":"error"})
-    if under:
-        session["confused_count"]=0; session["image_confused_count"]=0
-        return jsonify({"status":"ok","reply":"太棒了～安安替你開心 💪"})
-    if session.get("guided_topic")=="image_explain":
-        reply = next_help_response("image_confused_count")
-    else:
-        reply = next_help_response("confused_count")
-    return jsonify({"status":"ok","reply":normalize_math_terms(reply)})
-
-@app.route("/clear")
-def clear():
-    for k in ["conversation","confused_count","guided_topic","image_b64","image_confused_count"]:
-        session.pop(k,None)
-    return redirect("/")
 
 # -------------------------------
 # 🚀 run
