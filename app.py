@@ -1,11 +1,12 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.6-login-DB：新增 users 登入資料表（帳號、密碼、使用期限）
+# v4.7-login-ui：加入 /login /logout、到期檢查、未登入自動導向
 # ================================
 
-from flask import Flask, render_template, request, jsonify, redirect, session
+from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 import os, json, base64, requests, sqlite3, uuid, re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
@@ -55,6 +56,76 @@ def is_pure_help_phrase(msg: str) -> bool:
     return bool(re.fullmatch(r'\s*(我不會|不會|不懂|看不懂)\s*', msg or ""))
 
 # -------------------------------
+# 🗃️ SQLite
+# -------------------------------
+DB_PATH = "data/anan.db"
+os.makedirs("data", exist_ok=True)
+def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+def init_db():
+    conn = get_conn()
+    c = conn.cursor()
+
+    # 學習紀錄
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        question TEXT,
+        topic TEXT,
+        is_correct INTEGER,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # 使用者登入表
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        expire_date TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1
+    )
+    """)
+
+    conn.commit(); conn.close()
+    print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7-login-ui)")
+
+init_db()
+
+# ---- 使用者查詢 / 建立（for 初始管理員） ----
+def get_user(username: str):
+    conn = get_conn(); c = conn.cursor()
+    c.execute("SELECT id, username, password_hash, start_date, expire_date, is_active FROM users WHERE username=?", (username,))
+    row = c.fetchone(); conn.close()
+    if not row: return None
+    keys = ["id","username","password_hash","start_date","expire_date","is_active"]
+    return dict(zip(keys, row))
+
+def create_user(username: str, raw_password: str, days_valid: int = 365):
+    today = date.today()
+    expire = today + timedelta(days=days_valid)
+    conn = get_conn(); c = conn.cursor()
+    c.execute("INSERT INTO users (username,password_hash,start_date,expire_date,is_active) VALUES (?,?,?,?,1)",
+              (username, generate_password_hash(raw_password), today.isoformat(), expire.isoformat()))
+    conn.commit(); conn.close()
+
+def seed_admin_from_env():
+    u = os.getenv("ADMIN_DEFAULT_USERNAME")
+    p = os.getenv("ADMIN_DEFAULT_PASSWORD")
+    if not u or not p: return
+    if get_user(u) is None:
+        try:
+            create_user(u, p, days_valid=365)
+            print(f"✅ 已建立初始管理員帳號：{u}（有效期 365 天）")
+        except Exception as e:
+            print("⚠️ 建立初始管理員失敗：", e)
+
+seed_admin_from_env()
+
+# -------------------------------
 # 🧠 DeepSeek / GPT 備援
 # -------------------------------
 def ask_anan(question, mode="socratic"):
@@ -84,63 +155,34 @@ def ask_anan(question, mode="socratic"):
     return "（無回應）"
 
 # -------------------------------
-# 📊 SQLite 初始化
+# 🔐 登入驗證＋導向
 # -------------------------------
-DB_PATH = "data/anan.db"
-os.makedirs("data", exist_ok=True)
-def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+def is_login_required_endpoint(endpoint: str) -> bool:
+    """哪些端點需要登入"""
+    if not endpoint:
+        return True
+    allow_list = {"login", "static"}  # 登入頁、靜態資源放行
+    return endpoint not in allow_list
 
-def init_db():
-    conn = get_conn()
-    c = conn.cursor()
+def is_user_expired(u: dict) -> bool:
+    try:
+        return date.today() > date.fromisoformat(u["expire_date"])
+    except Exception:
+        return True
 
-    # 學習紀錄表
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS records(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT,
-        question TEXT,
-        topic TEXT,
-        is_correct INTEGER,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
+@app.before_request
+def auth_and_bootstrap_session():
+    # 讓 session 進入永久模式（依據 app.permanent_session_lifetime）
+    session.permanent = True
 
-    # 使用者登入表
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        start_date TEXT NOT NULL,
-        expire_date TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1
-    )
-    """)
+    # 若還沒有匿名 user_id，先給一個（不等同登入身分）
+    if "user_id" not in session:
+        session["user_id"] = str(uuid.uuid4())
 
-    conn.commit()
-    conn.close()
-    print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.6-login-DB)")
-
-init_db()
-
-# -------------------------------
-# 💬 不懂邏輯共用：三次後建議請教老師
-# -------------------------------
-TEACHER_HINT = "安安發現你還是有點困惑，這很正常喔。建議你把這題抄下來，明天上課時問老師，他一定會替你解釋得更仔細！"
-
-def next_help_response(counter_name):
-    c = session.get(counter_name, 0) + 1
-    session[counter_name] = c
-    if c == 1:
-        return "沒關係，我再簡單講一次：找對公式→代入數字→計算→加單位。"
-    elif c == 2:
-        return "我們換個說法試試～你記得剛剛的公式是哪一個嗎？"
-    elif c == 3:
-        return ask_anan("請直接用最簡單方式重講上一題，清楚列出公式、代入與答案。", mode="normal")
-    else:
-        session[counter_name] = 3
-        return TEACHER_HINT
+    # 未登入者導向 /login
+    if is_login_required_endpoint(request.endpoint):
+        if not session.get("auth_user"):
+            return redirect(url_for("login"))
 
 # -------------------------------
 # 🧮 analyze_image（含圖片記憶）
@@ -186,13 +228,8 @@ def analyze_image():
     return jsonify({"result":res,"success":True}),200
 
 # -------------------------------
-# 🧠 主要對話邏輯
+# 🧠 主頁（需登入）
 # -------------------------------
-@app.before_request
-def ensure_user():
-    if "user_id" not in session: session["user_id"]=str(uuid.uuid4())
-    session.permanent = True
-
 @app.route("/", methods=["GET","POST"])
 def home():
     if "conversation" not in session: session["conversation"]=[]; session["confused_count"]=0
@@ -230,6 +267,21 @@ def home():
 # -------------------------------
 # 🧭 feedback 按鈕
 # -------------------------------
+TEACHER_HINT = "安安發現你還是有點困惑，這很正常喔。建議你把這題抄下來，明天上課時問老師，他一定會替你解釋得更仔細！"
+
+def next_help_response(counter_name):
+    c = session.get(counter_name, 0) + 1
+    session[counter_name] = c
+    if c == 1:
+        return "沒關係，我再簡單講一次：找對公式→代入數字→計算→加單位。"
+    elif c == 2:
+        return "我們換個說法試試～你記得剛剛的公式是哪一個嗎？"
+    elif c == 3:
+        return ask_anan("請直接用最簡單方式重講上一題，清楚列出公式、代入與答案。", mode="normal")
+    else:
+        session[counter_name] = 3
+        return TEACHER_HINT
+
 @app.route("/feedback", methods=["POST"])
 def feedback():
     d=request.get_json(); under=d.get("understood")
@@ -251,6 +303,41 @@ def clear():
     for k in ["conversation","confused_count","guided_topic","image_b64","image_confused_count"]:
         session.pop(k,None)
     return redirect("/")
+
+# -------------------------------
+# 🔐 /login /logout
+# -------------------------------
+@app.route("/login", methods=["GET","POST"])
+def login():
+    # 若已登入，直接回首頁
+    if session.get("auth_user"):
+        return redirect(url_for("home"))
+
+    error = None
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+
+        u = get_user(username)
+        if not u:
+            error = "帳號或密碼錯誤"
+        elif not u["is_active"]:
+            error = "此帳號已被停用"
+        elif is_user_expired(u):
+            error = "帳號已到期，請聯絡管理員"
+        elif not check_password_hash(u["password_hash"], password):
+            error = "帳號或密碼錯誤"
+        else:
+            session["auth_user"] = u["username"]
+            return redirect(url_for("home"))
+
+    return render_template("login.html", error=error)
+
+@app.route("/logout")
+def logout():
+    for k in ["auth_user"]:
+        session.pop(k, None)
+    return redirect(url_for("login"))
 
 # -------------------------------
 # 🚀 run
