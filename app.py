@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.7.5：統一資料庫路徑（data/anan.db）+ 登入修復 + 圖片題/互動穩定
+# v4.7.6：統一資料庫路徑 + 自動建立管理員帳號 + 完整登入修復 + 互動穩定
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -22,10 +22,10 @@ openai_api_key = os.getenv("OPENAI_API_KEY", "")
 gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
 # ------------------------
-# 📁 SQLite 初始化
+# 📁 SQLite 初始化（統一路徑）
 # ------------------------
 DB_PATH = "data/anan.db"
-os.makedirs("data", exist_ok=True)  # 確保 data 目錄存在
+os.makedirs("data", exist_ok=True)
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -36,12 +36,24 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role TEXT, created_at TEXT)''')
     conn.commit()
     conn.close()
-
 init_db()
-print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.5 - data/anan.db)")
+
+# ✅ 自動建立管理員帳號（anan_admin / 1234）
+def seed_admin():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE username='anan_admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users (username, password, role, created_at) VALUES ('anan_admin', '1234', 'admin', datetime('now'))")
+        conn.commit()
+        print("✅ 已自動建立管理員帳號：anan_admin / 密碼 1234")
+    conn.close()
+
+seed_admin()
+print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.6)")
 
 # ------------------------
-# 🧮 教學邏輯核心：ask_anan
+# 🧮 教學邏輯核心
 # ------------------------
 def normalize_math_terms(text):
     text = text.replace("π", "3.1416")
@@ -64,7 +76,6 @@ def ask_anan(question, mode="socratic"):
 - 若學生回答正確，先肯定再補上完整算式。
 - 若學生答錯，請用鼓勵語氣引導。
 - 若學生輸入簡短詞（如公式或關鍵字），請直接用「公式應用 + 範例 + 最後答案」教學。
-- 語氣自然口語化，結尾請說出具體答案與單位。
 - {style}
 """
 
@@ -134,7 +145,7 @@ def logout():
     return redirect("/login")
 
 # ------------------------
-# 🏠 主頁與互動
+# 🏠 主頁互動
 # ------------------------
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -162,7 +173,7 @@ def clear():
     return redirect("/")
 
 # ------------------------
-# 💬 學生回饋（懂了 / 不懂）
+# 💬 學生回饋
 # ------------------------
 @app.route("/feedback", methods=["POST"])
 def feedback():
