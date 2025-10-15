@@ -1,258 +1,260 @@
-# =====================================
-# 📘 安安專案 app.py — 無登入穩定基線（修正版）
-# 功能：
-# - 六種幾何題（三角形、長方形、正方形、圓形、菱形、梯形）
-# - 三步蘇格拉底教學法
-# - 圖片分析 AI 備援：Vision → Gemini(Google_API_KEY) → DeepSeek → OpenAI
-# - SQLite：自動建立 learning_records 資料表（8 欄）
-# =====================================
+# ================================
+# 📘 安安專案主程式 app.py
+# v4.6-login-DB：新增 users 登入資料表（帳號、密碼、使用期限）
+# ================================
 
-from flask import Flask, render_template, request, jsonify
-import os, sqlite3, uuid, requests
-from datetime import datetime
+from flask import Flask, render_template, request, jsonify, redirect, session
+import os, json, base64, requests, sqlite3, uuid, re
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
-DB_PATH = "data/anan.db"
-PI = 3.1416
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制 16MB
 
-# -----------------------------
-# 初始化資料庫
-# -----------------------------
+# -------------------------------
+# ✅ 登入設定
+# -------------------------------
+session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
+app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
+DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
+
+# -------------------------------
+# ✅ API 初始化
+# -------------------------------
+deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+google_api_key = os.getenv("GOOGLE_API_KEY")
+
+try:
+    import google.generativeai as genai
+    if google_api_key:
+        genai.configure(api_key=google_api_key)
+        print("✅ Gemini API 已就緒")
+    else:
+        print("⚠️ 未設定 GOOGLE_API_KEY")
+except Exception as e:
+    print(f"⚠️ Gemini 初始化失敗: {e}")
+    genai = None
+
+# -------------------------------
+# 🧩 工具函式
+# -------------------------------
+def normalize_math_terms(s: str) -> str:
+    if not s:
+        return s
+    s = re.sub(r'\blcm\b', '最小公倍數', s, flags=re.IGNORECASE)
+    s = re.sub(r'\bgcd\b', '最大公因數', s, flags=re.IGNORECASE)
+    s = re.sub(r'\bmod\b', '模（取餘數）', s, flags=re.IGNORECASE)
+    s = s.replace("质数","質數").replace("质因数","質因數").replace("余数","餘數")
+    s = s.replace("最小公倍数","最小公倍數").replace("最大公约数","最大公因數")
+    s = s.replace("这","這").replace("个","個").replace("写","寫").replace("为","為")
+    return s
+
+def is_pure_help_phrase(msg: str) -> bool:
+    """判斷是否為純粹『我不懂／我不會／看不懂』"""
+    return bool(re.fullmatch(r'\s*(我不會|不會|不懂|看不懂)\s*', msg or ""))
+
+# -------------------------------
+# 🧠 DeepSeek / GPT 備援
+# -------------------------------
+def ask_anan(question, mode="socratic"):
+    style = "採用蘇格拉底式提問法，引導學生思考。" if mode=="socratic" else "用清楚步驟給出答案。"
+    system_prompt = f"""你是台灣數學小老師安安。
+請使用繁體中文（臺灣用語），親切、幽默地教學。
+教學規範：
+- 術語用中文（最小公倍數、最大公因數、模運算等）。
+- 用鼓勵的語氣引導學生。
+- {style}
+"""
+    try:
+        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+        payload = {"model": "deepseek-chat","messages": [{"role":"system","content":system_prompt},{"role":"user","content":question}],"temperature":0.3}
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
+        reply = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+        if reply: return normalize_math_terms(reply)
+    except Exception as e: print("DeepSeek 失敗:", e)
+    try:
+        if not openai_api_key: raise RuntimeError("未設定 OPENAI_API_KEY")
+        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+        payload2 = {"model":"gpt-4o-mini","messages":[{"role":"system","content":system_prompt},{"role":"user","content":question}],"temperature":0.3}
+        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=40)
+        reply = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
+        if reply: return normalize_math_terms(reply)
+    except Exception as e: print("OpenAI 備援失敗:", e)
+    return "（無回應）"
+
+# -------------------------------
+# 📊 SQLite 初始化
+# -------------------------------
+DB_PATH = "data/anan.db"
+os.makedirs("data", exist_ok=True)
+def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+
 def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
+
+    # 學習紀錄表
     c.execute("""
-        CREATE TABLE IF NOT EXISTS learning_records (
-            id TEXT PRIMARY KEY,
-            ts TEXT,
-            user_id TEXT,
-            question TEXT,
-            response TEXT,
-            topic TEXT,
-            step INTEGER,
-            correct INTEGER
-        )
+    CREATE TABLE IF NOT EXISTS records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        question TEXT,
+        topic TEXT,
+        is_correct INTEGER,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
     """)
+
+    # 使用者登入表
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        expire_date TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1
+    )
+    """)
+
     conn.commit()
     conn.close()
+    print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.6-login-DB)")
 
 init_db()
 
-def log_record(question, response, topic, step, correct=None, user_id="guest"):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO learning_records (id, ts, user_id, question, response, topic, step, correct)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (str(uuid.uuid4()), datetime.utcnow().isoformat(), user_id, question, response, topic, step, correct))
-    conn.commit()
-    conn.close()
+# -------------------------------
+# 💬 不懂邏輯共用：三次後建議請教老師
+# -------------------------------
+TEACHER_HINT = "安安發現你還是有點困惑，這很正常喔。建議你把這題抄下來，明天上課時問老師，他一定會替你解釋得更仔細！"
 
-# -----------------------------
-# 教學邏輯
-# -----------------------------
-def detect_topic(msg):
-    if "長方形" in msg: return "rectangle"
-    if "正方形" in msg: return "square"
-    if "三角形" in msg: return "triangle"
-    if "圓" in msg or "圓形" in msg or "半徑" in msg or "直徑" in msg: return "circle"
-    if "菱形" in msg: return "rhombus"
-    if "梯形" in msg: return "trapezoid"
-    return "general"
+def next_help_response(counter_name):
+    c = session.get(counter_name, 0) + 1
+    session[counter_name] = c
+    if c == 1:
+        return "沒關係，我再簡單講一次：找對公式→代入數字→計算→加單位。"
+    elif c == 2:
+        return "我們換個說法試試～你記得剛剛的公式是哪一個嗎？"
+    elif c == 3:
+        return ask_anan("請直接用最簡單方式重講上一題，清楚列出公式、代入與答案。", mode="normal")
+    else:
+        session[counter_name] = 3
+        return TEACHER_HINT
 
-def is_area(msg): return any(k in msg for k in ["面積", "area"])
-def is_perimeter(msg): return any(k in msg for k in ["周長", "perimeter", "圍一圈"])
+# -------------------------------
+# 🧮 analyze_image（含圖片記憶）
+# -------------------------------
+ALLOWED = {'png','jpg','jpeg'}
+def allow(f): return '.' in f and f.rsplit('.',1)[1].lower() in ALLOWED
 
-def socratic_steps(topic, kind):
-    if topic == "rectangle":
-        return ([
-            "第 1 步：找出長與寬。你知道題目給的長與寬是多少嗎？",
-            "第 2 步：面積公式是「長 × 寬」。能代入數字嗎？",
-            "第 3 步：面積 = 長 × 寬，記得單位是平方。"
-        ] if kind=="area" else [
-            "第 1 步：先列出長與寬。",
-            "第 2 步：周長公式是 2 × (長 + 寬)。",
-            "第 3 步：P = 2 × (L + W)。單位是長度。"
-        ])
-    if topic == "square":
-        return ([
-            "第 1 步：正方形四邊相等，先找出邊長 s。",
-            "第 2 步：面積公式是 s × s。",
-            "第 3 步：A = s²。"
-        ] if kind=="area" else [
-            "第 1 步：確認邊長 s。",
-            "第 2 步：周長公式是 4s。",
-            "第 3 步：P = 4s。"
-        ])
-    if topic == "triangle":
-        return ([
-            "第 1 步：確認底 b 與高 h。",
-            "第 2 步：面積公式是 (b × h) ÷ 2。",
-            "第 3 步：A = (b × h) ÷ 2。"
-        ] if kind=="area" else [
-            "第 1 步：列出三邊 a、b、c。",
-            "第 2 步：周長公式是 a + b + c。",
-            "第 3 步：P = a + b + c。"
-        ])
-    if topic == "circle":
-        return ([
-            "第 1 步：先找半徑 r。",
-            f"第 2 步：面積公式 A = πr²，這裡取 π = {PI}。",
-            f"第 3 步：A = {PI} × r²。"
-        ] if kind=="area" else [
-            "第 1 步：找半徑 r 或直徑 d（r = d ÷ 2）。",
-            f"第 2 步：周長公式 C = 2πr 或 C = πd（π = {PI}）。",
-            f"第 3 步：C = 2 × {PI} × r。"
-        ])
-    if topic == "rhombus":
-        return ([
-            "第 1 步：菱形面積可用對角線 d1、d2。",
-            "第 2 步：A = (d1 × d2) ÷ 2。",
-            "第 3 步：A = (d1 × d2) ÷ 2。"
-        ] if kind=="area" else [
-            "第 1 步：確認邊長 s。",
-            "第 2 步：周長公式 P = 4s。",
-            "第 3 步：P = 4s。"
-        ])
-    if topic == "trapezoid":
-        return ([
-            "第 1 步：找上底 a、下底 b 與高 h。",
-            "第 2 步：A = ((a + b) × h) ÷ 2。",
-            "第 3 步：A = ((a + b) × h) ÷ 2。"
-        ] if kind=="area" else [
-            "第 1 步：列出四邊 a、b、c、d。",
-            "第 2 步：P = a + b + c + d。",
-            "第 3 步：把四邊相加即可。"
-        ])
-    return [
-        "第 1 步：列出題目已知數據。",
-        "第 2 步：找出適用公式並代入。",
-        "第 3 步：計算後檢查單位。"
-    ]
-
-def build_reply(msg, step=1):
-    topic = detect_topic(msg)
-    kind = "area" if is_area(msg) else "perimeter" if is_perimeter(msg) else "area"
-    steps = socratic_steps(topic, kind)
-    idx = max(1, min(3, int(step))) - 1
-    return steps[idx], topic, idx + 1
-
-# -----------------------------
-# Flask 路由
-# -----------------------------
-@app.route("/")
-def index():
-    return render_template("index.html", version="安安無登入穩定版（含 GOOGLE_API_KEY 支援）")
-
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.get_json(force=True)
-    msg = data.get("message", "").strip()
-    step = int(data.get("step", 1))
-    if not msg:
-        return jsonify({"ok": False, "error": "訊息為空白"}), 400
-    reply, topic, step_used = build_reply(msg, step)
-    log_record(msg, reply, topic, step_used)
-    return jsonify({"ok": True, "reply": reply, "topic": topic, "step": step_used})
-
-# -----------------------------
-# 圖片分析 + 備援邏輯
-# -----------------------------
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
-    data = request.get_json(force=True)
-    img_b64 = data.get("image_base64")
-    if not img_b64:
-        return jsonify({"ok": False, "error": "缺少 image_base64"}), 400
-
-    prompt = "請閱讀這張數學圖形題，描述它的幾何關係並提出第 1 步引導問題（繁體中文）。"
-
-    def try_vision():
-        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-            return None
-        return "🔍 Vision 模式：偵測到幾何圖形題，先標記邊與角，再說出已知的長度。"
-
-    def try_gemini():
-        key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not key: return None
+    if "image" not in request.files: return jsonify({"result":"⚠️ 沒有收到圖片"}),400
+    img = request.files["image"]
+    if img.filename=='' or not allow(img.filename): return jsonify({"result":"⚠️ 圖片格式錯誤"}),400
+    data = img.read(); res = None
+    try:
+        if not google_api_key or genai is None:
+            raise RuntimeError("未設定 GOOGLE_API_KEY")
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        r = model.generate_content([
+            "你是台灣數學老師安安，用繁體中文詳細逐步講解這張圖片題。請分三到六個步驟說明，最後給出答案與單位。",
+            {"mime_type":"image/jpeg","data":data}],
+            generation_config={"max_output_tokens":1024})
+        res = r.text
+    except Exception as e: print("Gemini 失敗：", e)
+    if not res:
         try:
-            r = requests.post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
-                params={"key": key},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=8
-            )
-            j = r.json()
-            return j["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
-            return None
+            if not openai_api_key: raise RuntimeError("未設定 OPENAI_API_KEY")
+            b64 = base64.b64encode(data).decode()
+            h = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+            p = {"model":"gpt-4o","messages":[{"role":"user","content":[
+                {"type":"text","text":"你是台灣數學老師安安，用繁體中文詳細講解這張圖片題，請分三到六個步驟說明，最後給出答案與單位。"},
+                {"type":"image_url","image_url":{"url":f"data:image/jpeg;base64,{b64}"}}]}],"temperature":0.2}
+            r = requests.post("https://api.openai.com/v1/chat/completions", headers=h, json=p, timeout=60)
+            res = r.json()["choices"][0]["message"]["content"]
+        except Exception as e: return jsonify({"result":f"⚠️ 辨識失敗:{e}"}),500
+    res = normalize_math_terms(res)
+    session["guided_topic"] = "image_explain"
+    session["image_b64"] = base64.b64encode(data).decode()
+    session["image_confused_count"] = 0
+    if "conversation" not in session: session["conversation"]=[]
+    session["conversation"].append({"role":"user","content":"📷 [圖片題]"})
+    session["conversation"].append({"role":"assistant","content":res})
+    session.modified = True
+    return jsonify({"result":res,"success":True}),200
 
-    def try_deepseek():
-        key = os.getenv("DEEPSEEK_API_KEY")
-        if not key: return None
-        try:
-            r = requests.post(
-                "https://api.deepseek.com/chat/completions",
-                headers={"Authorization": f"Bearer {key}"},
-                json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}]},
-                timeout=8
-            )
-            j = r.json()
-            return j["choices"][0]["message"]["content"]
-        except Exception:
-            return None
+# -------------------------------
+# 🧠 主要對話邏輯
+# -------------------------------
+@app.before_request
+def ensure_user():
+    if "user_id" not in session: session["user_id"]=str(uuid.uuid4())
+    session.permanent = True
 
-    def try_openai():
-        key = os.getenv("OPENAI_API_KEY")
-        if not key: return None
-        try:
-            r = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}"},
-                json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]},
-                timeout=8
-            )
-            j = r.json()
-            return j["choices"][0]["message"]["content"]
-        except Exception:
-            return None
+@app.route("/", methods=["GET","POST"])
+def home():
+    if "conversation" not in session: session["conversation"]=[]; session["confused_count"]=0
+    convo=session["conversation"]
 
-    providers = [
-        ("vision", try_vision),
-        ("gemini", try_gemini),
-        ("deepseek", try_deepseek),
-        ("openai", try_openai),
-    ]
-    reply, used = None, "none"
-    for name, fn in providers:
-        out = fn()
-        if out and isinstance(out, str) and out.strip():
-            reply, used = out.strip(), name
-            break
-    if not reply:
-        reply = "📷 我看見一個幾何圖形。先描述有哪些邊、角或標示（例如底與高？半徑/直徑？），我再帶你做第 1 步分析。"
+    if request.method=="POST":
+        msg=request.form.get("message","").strip()
+        if not msg: return render_template("index.html",conversation=convo)
 
-    log_record("[analyze_image]", reply, "image", 1)
-    return jsonify({"ok": True, "reply": reply, "provider_used": used})
+        if is_pure_help_phrase(msg):
+            if session.get("guided_topic")=="image_explain":
+                reply = next_help_response("image_confused_count")
+            else:
+                reply = next_help_response("confused_count")
+            convo.append({"role":"user","content":msg})
+            convo.append({"role":"assistant","content":normalize_math_terms(reply)})
+            session["conversation"]=convo
+            return render_template("index.html",conversation=convo)
 
-# -----------------------------
-# 健康檢查 (確認金鑰是否被讀到)
-# -----------------------------
-@app.route("/health")
-def health():
-    return jsonify({
-        "ok": True,
-        "version": "無登入穩定版（含 GOOGLE_API_KEY 支援）",
-        "has_gemini": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
-        "has_deepseek": bool(os.getenv("DEEPSEEK_API_KEY")),
-        "has_openai": bool(os.getenv("OPENAI_API_KEY")),
-        "has_vision": bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")),
-    })
+        session["confused_count"]=0
+        session["image_confused_count"]=0
 
-# -----------------------------
-# 主程式
-# -----------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+        reply = ask_anan(msg, mode="socratic")
+        convo.append({"role":"user","content":msg})
+        convo.append({"role":"assistant","content":reply})
+        session["conversation"]=convo
+
+        conn=get_conn()
+        conn.execute("INSERT INTO records (user_id,question,topic,is_correct) VALUES (?,?,?,?)",
+                     (session["user_id"],msg,session.get("guided_topic","一般"),None))
+        conn.commit(); conn.close()
+
+    return render_template("index.html",conversation=session["conversation"])
+
+# -------------------------------
+# 🧭 feedback 按鈕
+# -------------------------------
+@app.route("/feedback", methods=["POST"])
+def feedback():
+    d=request.get_json(); under=d.get("understood")
+    if under is None: return jsonify({"status":"error"})
+    if under:
+        session["confused_count"]=0; session["image_confused_count"]=0
+        return jsonify({"status":"ok","reply":"太棒了～安安替你開心 💪"})
+    if session.get("guided_topic")=="image_explain":
+        reply = next_help_response("image_confused_count")
+    else:
+        reply = next_help_response("confused_count")
+    return jsonify({"status":"ok","reply":normalize_math_terms(reply)})
+
+# -------------------------------
+# 🗑️ clear
+# -------------------------------
+@app.route("/clear")
+def clear():
+    for k in ["conversation","confused_count","guided_topic","image_b64","image_confused_count"]:
+        session.pop(k,None)
+    return redirect("/")
+
+# -------------------------------
+# 🚀 run
+# -------------------------------
+if __name__=="__main__":
+    port=int(os.environ.get("PORT",8080))
+    app.run(host="0.0.0.0",port=port)
