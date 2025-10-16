@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.3-taiwan-style：加入台灣在地化教學風格
+# v4.9.4-taiwan-style：台灣在地化教學 + Session修復
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -11,10 +11,11 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+# Session 設定（實際由 ensure_user 控制是否持久化）
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.3-taiwan-style"
+APP_VERSION = "v4.9.4-taiwan-style"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -253,7 +254,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.3-taiwan)")
+    print("✅ [安安] 資料庫就緒 (v4.9.4)")
 init_db()
 
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
@@ -369,7 +370,7 @@ def analyze_image():
 def ensure_user():
     if "user_id" not in session:
         session["user_id"]=str(uuid.uuid4())
-        session.modified = True
+    # 🔥 關鍵修復：不設定 session.modified，讓 Session 在關閉瀏覽器後自動清空
 
 @app.route("/", methods=["GET","POST"])
 def home():
