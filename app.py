@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.4-taiwan-style：台灣在地化教學 + Session修復
+# v4.9.5-session-fix：修復 Session + 簡繁轉換
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -15,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.4-taiwan-style"
+APP_VERSION = "v4.9.5-session-fix"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -40,11 +40,28 @@ except Exception as e:
 def normalize_math_terms(s):
     if not s:
         return s
+    # 數學術語轉換
     s = re.sub(r'\blcm\b', '最小公倍數', s, flags=re.IGNORECASE)
     s = re.sub(r'\bgcd\b', '最大公因數', s, flags=re.IGNORECASE)
     s = re.sub(r'\bmod\b', '模（取餘數）', s, flags=re.IGNORECASE)
-    s = (s.replace("质","質").replace("余数","餘數").replace("约数","約數")
-           .replace("这","這").replace("个","個").replace("写","寫").replace("为","為"))
+    
+    # 🔥 加強簡繁轉換（常見簡體字）
+    simplified_to_traditional = {
+        "质":"質", "余数":"餘數", "约数":"約數",
+        "这":"這", "个":"個", "写":"寫", "为":"為",
+        "从":"從", "化简":"化簡", "简化":"簡化",
+        "结果":"結果", "问题":"問題", "过程":"過程",
+        "应该":"應該", "计算":"計算", "关系":"關係",
+        "显然":"顯然", "证明":"證明", "结论":"結論",
+        "答案":"答案", "题目":"題目", "练习":"練習",
+        "学生":"學生", "老师":"老師", "课本":"課本",
+        "习题":"習題", "变化":"變化", "规律":"規律",
+        "观察":"觀察", "发现":"發現", "总结":"總結"
+    }
+    
+    for simp, trad in simplified_to_traditional.items():
+        s = s.replace(simp, trad)
+    
     return s
 
 def clean_latex_format(s):
@@ -151,10 +168,11 @@ def ask_anan(question, mode="socratic", history_text=""):
 - 夜市抽獎有10個獎，你抽1次，中獎機率多少？
 - 班上30個人，15個喜歡珍奶，比例是多少？
 
-## 台灣用語規範
-- ✅ 使用：公分、公尺、公斤、元、便利商店、捷運、夜市
-- ✅ 舉例：珍珠奶茶、雞排、滷肉飯、鹽酥雞、蔥抓餅
-- ❌ 避免：厘米、圓（貨幣）、地鐵、大陸用語
+## 台灣用語規範（嚴格執行！）
+- ✅ 必須使用：公分、公尺、公斤、元、便利商店、捷運、夜市
+- ✅ 必須舉例：珍珠奶茶、雞排、滷肉飯、鹽酥雞、蔥抓餅
+- ❌ 絕對禁止：厘米、圓（貨幣）、地鐵、任何簡體字
+- ⚠️ 重要：你的回答必須100%使用台灣繁體中文，絕不使用簡體字！
 
 ## 回答原則
 1. 簡潔不囉嗦：避免過長理論說明
@@ -254,7 +272,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.4)")
+    print("✅ [安安] 資料庫就緒 (v4.9.5)")
 init_db()
 
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
@@ -306,6 +324,7 @@ def analyze_image():
 - 用台灣生活例子（珍珠奶茶、雞排、YouBike、便利商店等）
 - 使用台灣用語（公分不用厘米、元不用圓）
 - 數學公式用 $公式$ 或 $$公式$$ 格式
+- 絕對不使用簡體字！
 
 步驟：
 1) 辨識題目
@@ -370,7 +389,8 @@ def analyze_image():
 def ensure_user():
     if "user_id" not in session:
         session["user_id"]=str(uuid.uuid4())
-    # 🔥 關鍵修復：不設定 session.modified，讓 Session 在關閉瀏覽器後自動清空
+    # 🔥 強制設定為臨時 Session（關閉瀏覽器即清空）
+    session.permanent = False
 
 @app.route("/", methods=["GET","POST"])
 def home():
