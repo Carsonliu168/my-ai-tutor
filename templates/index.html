@@ -3,140 +3,103 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>數學小老師安安 v4.6 柔和版</title>
+  <title>數學小老師安安</title>
   <style>
     body {
       font-family: "Microsoft JhengHei", Arial, sans-serif;
-      background: linear-gradient(135deg, #ffeef2, #fff9f9);
+      background: #fff5f7;
       margin: 0;
       padding: 0;
-      text-align: center;
     }
-    h1 {
-      color: #d81b60;
-      margin-top: 30px;
-      text-shadow: 1px 1px 2px #ffd6e0;
-    }
-    .chat-box {
-      width: 90%;
-      max-width: 800px;
-      margin: 20px auto;
-      background: #fff;
-      border-radius: 18px;
-      box-shadow: 0 0 25px rgba(255,182,193,0.3);
+    header {
+      background: linear-gradient(180deg, #ffe6ef 0%, #ffddee 100%);
       padding: 20px;
-      text-align: left;
-      line-height: 1.7;
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+      color: #d63384;
+      border-bottom: 3px solid #ffc0cb;
+    }
+    header span.icon {
+      font-size: 32px;
+      margin-right: 8px;
+    }
+    main {
+      padding: 20px;
+      max-width: 700px;
+      margin: auto;
     }
     .message {
-      margin: 10px 0;
-      padding: 12px 14px;
-      border-radius: 10px;
+      border-radius: 12px;
+      padding: 12px 18px;
+      margin-bottom: 12px;
+      line-height: 1.6;
       word-wrap: break-word;
     }
     .user {
-      background-color: #ffe4ec;
-      text-align: right;
-      color: #ad1457;
+      background-color: #e7f2ff;
+      text-align: left;
+      border-left: 6px solid #0078d7;
     }
     .assistant {
-      background-color: #fff3cd;
-      color: #6d4c41;
+      background-color: #ffe6f0;
+      text-align: left;
+      border-left: 6px solid #ff85a2;
     }
     form {
-      margin-top: 15px;
+      margin-top: 25px;
+      text-align: center;
     }
-    input[type=text] {
+    input[type="text"] {
       width: 80%;
       padding: 10px;
-      border-radius: 10px;
-      border: 1px solid #f48fb1;
       font-size: 16px;
-      box-shadow: inset 0 0 5px rgba(255,182,193,0.2);
+      border-radius: 8px;
+      border: 1px solid #ccc;
     }
     button {
       padding: 10px 18px;
-      margin: 5px;
-      border: none;
-      border-radius: 10px;
-      background-color: #ec407a;
-      color: white;
       font-size: 16px;
+      background-color: #ff7fbf;
+      color: white;
+      border: none;
+      border-radius: 8px;
       cursor: pointer;
-      transition: 0.2s;
+      margin-left: 8px;
     }
     button:hover {
-      background-color: #d81b60;
+      background-color: #ff66a3;
     }
-    .feedback-buttons {
-      margin-top: 15px;
+    footer {
       text-align: center;
-    }
-    .feedback-buttons button {
-      width: 120px;
-      background-color: #f06292;
-    }
-    .feedback-buttons button:hover {
-      background-color: #e91e63;
-    }
-    .upload-section {
-      margin-top: 25px;
+      margin-top: 30px;
+      color: #777;
+      font-size: 13px;
     }
   </style>
 </head>
 <body>
-  <h1>🩷 數學小老師安安</h1>
+  <header>
+    <span class="icon">🧮</span> 數學小老師安安
+  </header>
 
-  <div class="chat-box" id="chatBox">
+  <main>
     {% for msg in conversation %}
-      {% if msg.role == 'user' %}
+      {% if msg.role == "user" %}
         <div class="message user">👧 你：{{ msg.content }}</div>
       {% else %}
         <div class="message assistant">👩‍🏫 安安老師：{{ msg.content|safe }}</div>
       {% endif %}
     {% endfor %}
-  </div>
 
-  <form method="post">
-    <input type="text" name="message" placeholder="輸入你的問題..." required>
-    <button type="submit">送出</button>
-    <button type="button" onclick="window.location.href='/clear'">清除紀錄</button>
-  </form>
-
-  <div class="upload-section">
-    <form id="imgForm" enctype="multipart/form-data">
-      <input type="file" name="image" accept="image/*" required>
-      <button type="button" onclick="uploadImage()">上傳圖片題 📷</button>
+    <form method="post" action="/">
+      <input type="text" name="message" placeholder="輸入你的問題..." required>
+      <button type="submit">送出</button>
     </form>
-    <p id="uploadStatus"></p>
-  </div>
+  </main>
 
-  <div class="feedback-buttons">
-    <button onclick="sendFeedback(true)">懂了 💡</button>
-    <button onclick="sendFeedback(false)">不懂 😵</button>
-  </div>
-
-  <script>
-    async function uploadImage() {
-      const form = document.getElementById("imgForm");
-      const formData = new FormData(form);
-      document.getElementById("uploadStatus").innerText = "⏳ 分析中...";
-      const res = await fetch("/analyze_image", { method: "POST", body: formData });
-      const data = await res.json();
-      document.getElementById("uploadStatus").innerText = data.result || "❌ 辨識失敗";
-      if (data.success) location.reload();
-    }
-
-    async function sendFeedback(understood) {
-      const res = await fetch("/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ understood })
-      });
-      const data = await res.json();
-      alert(data.reply);
-      if (understood) location.href = "/clear";
-    }
-  </script>
+  <footer>
+    © 2025 WeShareAI 教育服務｜安安數學助教系統
+  </footer>
 </body>
 </html>
