@@ -3,84 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>數學小老師安安 v4.7-login-ui</title>
+  <title>數學小老師安安 v4.5.3</title>
   <style>
     body {
       font-family: "Microsoft JhengHei", Arial, sans-serif;
-      background: linear-gradient(120deg, #e0f7fa, #e3f2fd);
+      background: linear-gradient(135deg, #e0f7fa, #f1f8e9);
       margin: 0;
       padding: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
+      text-align: center;
     }
     h1 {
-      margin-top: 30px;
       color: #0078d7;
+      margin-top: 30px;
     }
     .chat-box {
       width: 90%;
       max-width: 800px;
+      margin: 20px auto;
       background: white;
-      padding: 20px;
-      margin-top: 20px;
       border-radius: 15px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.1);
-      overflow-y: auto;
+      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      padding: 20px;
+      text-align: left;
+      line-height: 1.6;
     }
     .message {
       margin: 10px 0;
       padding: 10px;
-      border-radius: 10px;
-      line-height: 1.6;
+      border-radius: 8px;
     }
     .user {
-      background: #e8f0fe;
+      background-color: #e3f2fd;
       text-align: right;
     }
     .assistant {
-      background: #f1f8e9;
-      text-align: left;
+      background-color: #f1f8e9;
     }
     form {
-      margin-top: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 90%;
-      max-width: 800px;
+      margin-top: 15px;
     }
     input[type=text] {
-      width: 100%;
+      width: 80%;
       padding: 10px;
-      font-size: 16px;
       border-radius: 8px;
       border: 1px solid #ccc;
-      margin-bottom: 10px;
+      font-size: 16px;
     }
     button {
-      padding: 10px 20px;
-      background-color: #0078d7;
-      color: white;
+      padding: 10px 15px;
+      margin: 5px;
       border: none;
       border-radius: 8px;
-      cursor: pointer;
+      background-color: #0078d7;
+      color: white;
       font-size: 16px;
-      margin: 5px;
+      cursor: pointer;
     }
     button:hover {
       background-color: #005fa3;
     }
-    .controls {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 20px;
+    .feedback-buttons {
+      margin-top: 10px;
+      text-align: center;
+    }
+    .feedback-buttons button {
+      width: 120px;
     }
     .upload-section {
-      margin-top: 15px;
-      text-align: center;
+      margin-top: 20px;
     }
   </style>
 </head>
@@ -98,11 +88,9 @@
   </div>
 
   <form method="post">
-    <input type="text" name="message" placeholder="請輸入你的問題..." required>
-    <div class="controls">
-      <button type="submit">送出問題</button>
-      <button type="button" onclick="clearChat()">清除紀錄</button>
-    </div>
+    <input type="text" name="message" placeholder="輸入你的問題..." required>
+    <button type="submit">送出</button>
+    <button type="button" onclick="window.location.href='/clear'">清除紀錄</button>
   </form>
 
   <div class="upload-section">
@@ -113,19 +101,31 @@
     <p id="uploadStatus"></p>
   </div>
 
-  <script>
-    function clearChat() {
-      window.location.href = "/clear";
-    }
+  <div class="feedback-buttons">
+    <button onclick="sendFeedback(true)">懂了 👍</button>
+    <button onclick="sendFeedback(false)">不懂 😵</button>
+  </div>
 
+  <script>
     async function uploadImage() {
       const form = document.getElementById("imgForm");
       const formData = new FormData(form);
-      document.getElementById("uploadStatus").innerText = "⏳ 上傳中...";
+      document.getElementById("uploadStatus").innerText = "⏳ 分析中...";
       const res = await fetch("/analyze_image", { method: "POST", body: formData });
       const data = await res.json();
-      document.getElementById("uploadStatus").innerText = data.result || "❌ 上傳失敗";
+      document.getElementById("uploadStatus").innerText = data.result || "❌ 辨識失敗";
       if (data.success) location.reload();
+    }
+
+    async function sendFeedback(understood) {
+      const res = await fetch("/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ understood })
+      });
+      const data = await res.json();
+      alert(data.reply);
+      if (understood) location.href = "/clear";
     }
   </script>
 </body>
