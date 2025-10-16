@@ -3,110 +3,130 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>數學小老師安安（無登入還原基線）</title>
+  <title>數學小老師安安 v4.7-login-ui</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: "Microsoft JhengHei","Noto Sans TC",Arial,sans-serif; background:#f6f8fb; color:#222; margin:0; }
-    .container { max-width: 860px; margin: 40px auto; padding: 0 16px; }
-    h1 { margin: 0 0 6px; } .sub { color:#666; margin: 0 0 20px; }
-    .card { background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.06); padding:16px; margin-bottom:16px; }
-    label { display:block; margin-bottom:8px; } textarea { width:100%; padding:10px; border:1px solid #ddd; border-radius:12px; }
-    .row { display:flex; align-items:center; gap:12px; margin-top:8px; } select { padding:8px 10px; border:1px solid #ddd; border-radius:12px; }
-    button { margin-top:12px; padding:10px 16px; border:none; border-radius:12px; background:#2b6cb0; color:#fff; cursor:pointer; }
-    button:hover { filter: brightness(1.05); }
-    .reply { white-space:pre-wrap; background:#f8fafc; padding:10px; border-radius:12px; min-height:24px; border:1px dashed #e2e8f0; }
-    .footer { display:flex; justify-content:space-between; align-items:center; }
+    body {
+      font-family: "Microsoft JhengHei", Arial, sans-serif;
+      background: linear-gradient(120deg, #e0f7fa, #e3f2fd);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    h1 {
+      margin-top: 30px;
+      color: #0078d7;
+    }
+    .chat-box {
+      width: 90%;
+      max-width: 800px;
+      background: white;
+      padding: 20px;
+      margin-top: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      overflow-y: auto;
+    }
+    .message {
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 10px;
+      line-height: 1.6;
+    }
+    .user {
+      background: #e8f0fe;
+      text-align: right;
+    }
+    .assistant {
+      background: #f1f8e9;
+      text-align: left;
+    }
+    form {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 90%;
+      max-width: 800px;
+    }
+    input[type=text] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #0078d7;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      background-color: #005fa3;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .upload-section {
+      margin-top: 15px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>✅ 數學小老師安安（無登入還原基線）</h1>
-    <p class="sub">三步蘇格拉底教學 · 六種幾何 · π=3.1416 · 圖片上傳 · 自動備援</p>
+  <h1>🧮 數學小老師安安</h1>
 
-    <div class="card">
-      <label for="message">輸入你的問題（例：「長方形面積怎麼算？」、「圓形周長」）</label>
-      <textarea id="message" rows="3" placeholder="請輸入題目或問題…"></textarea>
-      <div class="row">
-        <label for="step">現在要第幾步？</label>
-        <select id="step">
-          <option value="1">第 1 步</option>
-          <option value="2">第 2 步</option>
-          <option value="3">第 3 步</option>
-        </select>
-      </div>
-      <button id="askBtn">送出</button>
-    </div>
+  <div class="chat-box" id="chatBox">
+    {% for msg in conversation %}
+      {% if msg.role == 'user' %}
+        <div class="message user">👤 你：{{ msg.content }}</div>
+      {% else %}
+        <div class="message assistant">🤖 安安老師：{{ msg.content|safe }}</div>
+      {% endif %}
+    {% endfor %}
+  </div>
 
-    <div class="card">
-      <h3>回覆</h3>
-      <div id="replyBox" class="reply"></div>
+  <form method="post">
+    <input type="text" name="message" placeholder="請輸入你的問題..." required>
+    <div class="controls">
+      <button type="submit">送出問題</button>
+      <button type="button" onclick="clearChat()">清除紀錄</button>
     </div>
+  </form>
 
-    <div class="card">
-      <h3>圖片分析（AI 備援）</h3>
-      <input type="file" id="imgInput" accept="image/*">
-      <button id="analyzeBtn">上傳並分析</button>
-      <div id="imgReply" class="reply"></div>
-    </div>
-
-    <div class="footer">
-      <button id="clearBtn">重置</button>
-      <span id="version">{{ version }}</span>
-    </div>
+  <div class="upload-section">
+    <form id="imgForm" enctype="multipart/form-data">
+      <input type="file" name="image" accept="image/*" required>
+      <button type="button" onclick="uploadImage()">上傳圖片題 📷</button>
+    </form>
+    <p id="uploadStatus"></p>
   </div>
 
   <script>
-    async function chat() {
-      const message = document.getElementById('message').value.trim();
-      const step = document.getElementById('step').value;
-      if (!message) { alert('請先輸入問題'); return; }
-      const res = await fetch('/chat', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({message, step})
-      });
+    function clearChat() {
+      window.location.href = "/clear";
+    }
+
+    async function uploadImage() {
+      const form = document.getElementById("imgForm");
+      const formData = new FormData(form);
+      document.getElementById("uploadStatus").innerText = "⏳ 上傳中...";
+      const res = await fetch("/analyze_image", { method: "POST", body: formData });
       const data = await res.json();
-      document.getElementById('replyBox').textContent = data.ok ? '🧠 ' + data.reply : '❌ ' + (data.error || '發生錯誤');
+      document.getElementById("uploadStatus").innerText = data.result || "❌ 上傳失敗";
+      if (data.success) location.reload();
     }
-
-    async function analyzeImage() {
-      const file = document.getElementById('imgInput').files[0];
-      if (!file) { alert('請先選擇圖片'); return; }
-      const b64 = await toBase64(file);
-      const res = await fetch('/analyze_image', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ image_base64: b64 })
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        document.getElementById('imgReply').textContent = '❌ ' + (data.error || '發生錯誤');
-      } else {
-        const used = data.provider_used === 'none' ? '（離線示範）' : `（使用：${data.provider_used}）`;
-        document.getElementById('imgReply').textContent = '📷 ' + data.reply + ' ' + used;
-      }
-    }
-
-    async function clearAll() {
-      await fetch('/clear', {method:'POST'});
-      document.getElementById('message').value='';
-      document.getElementById('replyBox').textContent='';
-      document.getElementById('imgInput').value='';
-      document.getElementById('imgReply').textContent='';
-    }
-
-    function toBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-      });
-    }
-
-    document.getElementById('askBtn').addEventListener('click', chat);
-    document.getElementById('analyzeBtn').addEventListener('click', analyzeImage);
-    document.getElementById('clearBtn').addEventListener('click', clearAll);
   </script>
 </body>
 </html>
