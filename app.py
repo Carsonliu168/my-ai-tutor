@@ -332,7 +332,7 @@ def analyze_image():
     try:
         if not google_api_key or genai is None:
             raise RuntimeError("未設定 GOOGLE_API_KEY")
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         r = model.generate_content(
             [instruction, {"mime_type": mime, "data": data}],
             generation_config={"max_output_tokens":1024}
