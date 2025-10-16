@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.8.5-fixed：修復 API 回應問題
+# v4.8.6-debug：加強除錯與回應處理
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.8.5-fixed"
+APP_VERSION = "v4.8.6-debug"
 
 # -------------------------------
 # ✅ 環境變數檢查
@@ -75,11 +75,12 @@ def safe_json(resp):
     """確保 requests 回傳能安全解析 JSON；否則回空 dict。"""
     try:
         data = resp.json()
-        print(f"[API] 狀態碼: {resp.status_code}, 有資料: {bool(data)}")
+        print(f"[API] 狀態碼: {resp.status_code}")
+        print(f"[API] 回應結構: {json.dumps(data, ensure_ascii=False)[:300]}")
         return data
     except Exception as e:
         print(f"[API] JSON 解析失敗: {e}")
-        print(f"[API] 原始內容前200字: {resp.text[:200]}")
+        print(f"[API] 原始內容: {resp.text[:300]}")
         return {}
 
 # -------------------------------
@@ -87,6 +88,28 @@ def safe_json(resp):
 # -------------------------------
 def fallback_generate_reply(user_text: str) -> str:
     t = (user_text or "").replace(" ", "")
+    
+    # 簡單計算：1+2, 5-3, 2*3, 10/2
+    simple_calc = re.match(r'^(\d+)\s*([\+\-\*\/])\s*(\d+)\s*=?\s*$', user_text.strip())
+    if simple_calc:
+        num1 = float(simple_calc.group(1))
+        op = simple_calc.group(2)
+        num2 = float(simple_calc.group(3))
+        
+        if op == '+':
+            result = num1 + num2
+            return f"很好的問題！{num1} + {num2} = **{result}**\n\n你算對了嗎？"
+        elif op == '-':
+            result = num1 - num2
+            return f"來算減法！{num1} - {num2} = **{result}**"
+        elif op == '*':
+            result = num1 * num2
+            return f"乘法題！{num1} × {num2} = **{result}**"
+        elif op == '/':
+            if num2 != 0:
+                result = num1 / num2
+                return f"除法題！{num1} ÷ {num2} = **{result}**"
+    
     # 長方形：長是X、寬是Y
     m = re.search(r"長(是)?(\d+(\.\d+)?)\D+寬(是)?(\d+(\.\d+)?)", t)
     if m:
@@ -141,7 +164,7 @@ def trim_conversation_history():
         print(f"[Session] 對話已修剪至 {MAX_HISTORY} 則")
 
 # -------------------------------
-# 🧠 DeepSeek / OpenAI（文字）鏈 - 修復版
+# 🧠 DeepSeek / OpenAI（文字）鏈 - 加強除錯版
 # -------------------------------
 def ask_anan(question, mode="socratic", history_text=""):
     # 檢查是否有任何可用的 API
@@ -155,6 +178,7 @@ def ask_anan(question, mode="socratic", history_text=""):
 - 答對立即肯定並收尾。
 - 答錯或說「不懂」時才引導。
 - 使用台灣繁體中文，口吻親切。
+- 即使是簡單的問題也要給出完整回答。
 """
     system_prompt = f"你是數學老師安安。{style}\n{rules}"
 
@@ -164,53 +188,75 @@ def ask_anan(question, mode="socratic", history_text=""):
         messages.append({"role":"assistant","content":"（收到上方脈絡）"})
     messages.append({"role":"user","content":question})
 
+    print(f"\n[問題] {question}")
+
     # 1) DeepSeek
     if deepseek_api_key:
         try:
             headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
             payload = {"model": "deepseek-chat","messages": messages,"temperature":0.3}
+            
             print("[DeepSeek] 發送請求...")
-            r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=35)
+            r = requests.post("https://api.deepseek.com/chat/completions", 
+                            headers=headers, json=payload, timeout=35)
             r.raise_for_status()
             data = safe_json(r)
             
             if data and "choices" in data and len(data["choices"]) > 0:
                 choice = data["choices"][0]
                 if "message" in choice and "content" in choice["message"]:
-                    reply = choice["message"]["content"].strip()
-                    if reply:
-                        print(f"[DeepSeek] ✅ 成功，回應長度: {len(reply)}")
+                    reply = choice["message"]["content"]
+                    if reply and reply.strip():
+                        reply = reply.strip()
+                        print(f"[DeepSeek] ✅ 成功")
+                        print(f"[DeepSeek] 回應長度: {len(reply)}")
+                        print(f"[DeepSeek] 回應內容: {reply[:200]}...")
                         return normalize_math_terms(reply)
-            
-            print(f"[DeepSeek] ⚠️ 回應格式異常")
+                    else:
+                        print("[DeepSeek] ⚠️ 回應為空字串")
+                else:
+                    print("[DeepSeek] ⚠️ 找不到 message.content")
+            else:
+                print("[DeepSeek] ⚠️ 回應格式異常")
+                
         except requests.exceptions.Timeout:
             print("[DeepSeek] ⏱️ 請求超時")
         except Exception as e:
-            print(f"[DeepSeek] ❌ 失敗: {e}")
+            print(f"[DeepSeek] ❌ 失敗: {type(e).__name__}: {e}")
 
     # 2) OpenAI（文字）
     if openai_api_key:
         try:
             headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
             payload2 = {"model":"gpt-4o-mini","messages":messages,"temperature":0.3}
+            
             print("[OpenAI] 發送請求...")
-            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=35)
+            r = requests.post("https://api.openai.com/v1/chat/completions", 
+                            headers=headers, json=payload2, timeout=35)
             r.raise_for_status()
             data = safe_json(r)
             
             if data and "choices" in data and len(data["choices"]) > 0:
                 choice = data["choices"][0]
                 if "message" in choice and "content" in choice["message"]:
-                    reply = choice["message"]["content"].strip()
-                    if reply:
-                        print(f"[OpenAI] ✅ 成功，回應長度: {len(reply)}")
+                    reply = choice["message"]["content"]
+                    if reply and reply.strip():
+                        reply = reply.strip()
+                        print(f"[OpenAI] ✅ 成功")
+                        print(f"[OpenAI] 回應長度: {len(reply)}")
+                        print(f"[OpenAI] 回應內容: {reply[:200]}...")
                         return normalize_math_terms(reply)
-            
-            print(f"[OpenAI] ⚠️ 回應格式異常")
+                    else:
+                        print("[OpenAI] ⚠️ 回應為空字串")
+                else:
+                    print("[OpenAI] ⚠️ 找不到 message.content")
+            else:
+                print("[OpenAI] ⚠️ 回應格式異常")
+                
         except requests.exceptions.Timeout:
             print("[OpenAI] ⏱️ 請求超時")
         except Exception as e:
-            print(f"[OpenAI] ❌ 失敗: {e}")
+            print(f"[OpenAI] ❌ 失敗: {type(e).__name__}: {e}")
 
     # 3) 超穩備援
     print("[備援] 使用本地備援")
@@ -230,7 +276,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.8.5)")
+    print("✅ [安安] 資料庫就緒 (v4.8.6)")
 init_db()
 
 # -------------------------------
@@ -368,9 +414,10 @@ def home():
         try:
             reply = ask_anan(msg, "socratic", hist)
             if not reply or not str(reply).strip():
+                print("[警告] ask_anan 回傳空值，使用備援")
                 reply = fallback_generate_reply(msg)
         except Exception as e:
-            print("[home] 主流程失敗：", e)
+            print(f"[home] 主流程失敗：{type(e).__name__}: {e}")
             reply = fallback_generate_reply(msg)
 
         convo.append({"role":"user","content":msg})
@@ -388,7 +435,7 @@ def home():
             )
             conn.commit(); conn.close()
         except Exception as e:
-            print("寫入 records 失敗：", e)
+            print(f"寫入 records 失敗：{e}")
 
     return render_template("index.html", conversation=convo)
 
