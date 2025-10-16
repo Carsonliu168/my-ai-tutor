@@ -151,36 +151,42 @@
       }
     }
 
-    // ✅ 上傳圖片 - 修復版
+    // ✅ 上傳圖片 - 完全修復版
     async function uploadImage(){
       const form = document.getElementById("imgForm");
       const fd = new FormData(form);
       const s = document.getElementById("uploadStatus");
       const chat = document.getElementById("chatBox");
-      s.innerText = "⏳ 安安老師思考中...🧮";
+      
+      // 清空狀態文字
+      s.innerText = "";
+
+      // 1. 先在聊天框顯示使用者上傳訊息
+      const userMsg = document.createElement("div");
+      userMsg.className = "message user";
+      userMsg.textContent = "📷 你上傳了一張圖片題";
+      chat.appendChild(userMsg);
+
+      // 2. 顯示「思考中」訊息在聊天框
+      const botMsg = document.createElement("div");
+      botMsg.className = "message assistant";
+      botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>⏳ 思考中...🧮";
+      chat.appendChild(botMsg);
+      chat.scrollTop = chat.scrollHeight;
 
       try{
         const r = await fetch("/analyze_image", { method:"POST", body: fd });
         const data = await r.json();
 
-        // 使用者訊息
-        const userMsg = document.createElement("div");
-        userMsg.className = "message user";
-        userMsg.textContent = "📷 你上傳了一張圖片題";
-        chat.appendChild(userMsg);
-
-        // 安安回應
-        const botMsg = document.createElement("div");
-        botMsg.className = "message assistant";
+        // 3. 更新安安的回應內容
         const contentSpan = document.createElement("span");
         contentSpan.className = "markdown-content";
         contentSpan.textContent = data.result || "圖片解析失敗";
         
         botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>";
         botMsg.appendChild(contentSpan);
-        chat.appendChild(botMsg);
 
-        // 渲染新訊息的 Markdown 和數學
+        // 4. 渲染 Markdown 和數學公式
         contentSpan.innerHTML = marked.parse(contentSpan.textContent);
         if(window.MathJax && window.MathJax.typesetPromise){
           MathJax.typesetPromise([botMsg]).catch((err) => console.log('MathJax error:', err));
@@ -189,10 +195,15 @@
         chat.scrollTop = chat.scrollHeight;
         form.reset();
         document.getElementById("preview").style.display = "none";
-        s.innerText = "✅ 圖片解析完成";
+        
+        // 5. 下方只顯示簡短提示
+        s.innerText = "✅ 完成";
+        setTimeout(() => { s.innerText = ""; }, 2000);
 
       }catch(e){
-        s.innerText = "❌ 連線異常，稍後再試";
+        // 錯誤也顯示在聊天框
+        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌ 連線異常，請稍後再試";
+        s.innerText = "";
         console.error("上傳錯誤:", e);
       }
     }
