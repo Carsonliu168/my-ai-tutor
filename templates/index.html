@@ -57,7 +57,7 @@
         {% else %}
           <div class="message assistant">
             👩‍🏫 安安老師：
-            <span class="markdown" data-md="{{ msg.content|tojson }}"></span>
+            <span class="markdown-content">{{ msg.content | safe }}</span>
           </div>
         {% endif %}
       {% endfor %}
@@ -89,16 +89,22 @@
   <footer>© 2025 WeShareAI 教育服務｜安安數學助教系統</footer>
 
   <script>
-    // ✅ Markdown + 公式渲染（修正版：保留 \ 符號）
-    function renderMarkdown(){
-      document.querySelectorAll(".markdown").forEach(el=>{
-        let raw = JSON.parse(el.dataset.md || '""');
-        raw = raw.replace(/\\/g, "\\\\"); // 保留反斜線給 MathJax
-        el.innerHTML = marked.parse(raw);
+    // ✅ 修正：頁面載入後立即渲染 Markdown
+    function renderAllMarkdown(){
+      document.querySelectorAll(".markdown-content").forEach(el => {
+        if(!el.dataset.rendered){
+          const raw = el.textContent;
+          el.innerHTML = marked.parse(raw);
+          el.dataset.rendered = "true";
+        }
       });
       if(window.MathJax) MathJax.typesetPromise();
     }
-    document.addEventListener("DOMContentLoaded", renderMarkdown);
+
+    // 確保在 marked 和 MathJax 都載入後才渲染
+    window.addEventListener('load', function(){
+      setTimeout(renderAllMarkdown, 100);
+    });
 
     function clearChat(){ window.location.href="/clear"; }
 
@@ -134,7 +140,7 @@
 
         const botMsg = document.createElement("div");
         botMsg.className = "message assistant";
-        botMsg.innerHTML = "👩‍🏫 安安老師：" + marked.parse(data.result || "圖片解析失敗");
+        botMsg.innerHTML = "👩‍�教：" + marked.parse(data.result || "圖片解析失敗");
         chat.appendChild(botMsg);
 
         chat.scrollTop = chat.scrollHeight;
