@@ -1,11 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.8.4-stable：
-# - 強化備援流程（永不卡死）
-# - API 呼叫 raise_for_status + 安全解析
-# - analyze_image 偵測 JPEG/PNG
-# - 全面繁體化與術語正規化
-# - 保留原 4.8.3 教學與 Session 行為
+# v4.8.5-fixed：修復 API 回應問題
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -22,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.8.4-stable"
+APP_VERSION = "v4.8.5-fixed"
 
 # -------------------------------
 # ✅ 環境變數檢查
@@ -79,8 +74,12 @@ def brief_history(max_items=4):
 def safe_json(resp):
     """確保 requests 回傳能安全解析 JSON；否則回空 dict。"""
     try:
-        return resp.json()
-    except Exception:
+        data = resp.json()
+        print(f"[API] 狀態碼: {resp.status_code}, 有資料: {bool(data)}")
+        return data
+    except Exception as e:
+        print(f"[API] JSON 解析失敗: {e}")
+        print(f"[API] 原始內容前200字: {resp.text[:200]}")
         return {}
 
 # -------------------------------
@@ -117,13 +116,6 @@ def fallback_generate_reply(user_text: str) -> str:
         area = b * h / 2
         return normalize_math_terms(f"備援解法：**三角形面積 = 底 × 高 ÷ 2 = {b} × {h} ÷ 2 = {area}**。")
 
-    # 菱形：對角線
-    m = re.search(r"(菱形).*(對角線|對角).*(是)?(\d+(\.\d+)?).*(和|與|、).*(是)?(\d+(\.\d+)?)", t)
-    if m:
-        d1 = float(m.group(4)); d2 = float(m.group(9))
-        area = d1 * d2 / 2
-        return normalize_math_terms(f"備援解法：**菱形面積 = 對角線乘積 ÷ 2 = {d1} × {d2} ÷ 2 = {area}**。")
-
     # 梯形：上底下底高
     m = re.search(r"(梯形).*(上底)(是)?(\d+(\.\d+)?).*(下底)(是)?(\d+(\.\d+)?).*(高)(是)?(\d+(\.\d+)?)", t)
     if m:
@@ -131,12 +123,32 @@ def fallback_generate_reply(user_text: str) -> str:
         area = (a + b) * h / 2
         return normalize_math_terms(f"備援解法：**梯形面積 = (上底+下底)×高÷2 = ({a}+{b})×{h}÷2 = {area}**。")
 
-    return normalize_math_terms("我收到你的問題了！主模型現在較忙，我先記錄並用簡化版思路協助。若能補充條件（單位、圖形資訊），我能更快完成。")
+    return normalize_math_terms(
+        f"我收到你的問題了：「{user_text[:50]}」\n\n"
+        f"請告訴我更多資訊：\n"
+        f"1. 這是什麼圖形？（長方形、三角形、圓形等）\n"
+        f"2. 題目給了哪些數字和單位？\n\n"
+        f"這樣我能更準確幫你解題！"
+    )
+
+def trim_conversation_history():
+    """限制對話歷史，避免 Session 過大"""
+    convo = session.get("conversation", [])
+    MAX_HISTORY = 20
+    if len(convo) > MAX_HISTORY:
+        session["conversation"] = convo[-MAX_HISTORY:]
+        session.modified = True
+        print(f"[Session] 對話已修剪至 {MAX_HISTORY} 則")
 
 # -------------------------------
-# 🧠 DeepSeek / OpenAI（文字）鏈
+# 🧠 DeepSeek / OpenAI（文字）鏈 - 修復版
 # -------------------------------
 def ask_anan(question, mode="socratic", history_text=""):
+    # 檢查是否有任何可用的 API
+    if not deepseek_api_key and not openai_api_key:
+        print("[警告] 無可用的 API Key，直接使用備援")
+        return fallback_generate_reply(question)
+    
     style = "採用蘇格拉底式提問法，引導學生思考。" if mode=="socratic" else "用清楚步驟給出答案。"
     rules = """
 教學規範：
@@ -153,36 +165,55 @@ def ask_anan(question, mode="socratic", history_text=""):
     messages.append({"role":"user","content":question})
 
     # 1) DeepSeek
-    try:
-        if not deepseek_api_key:
-            raise RuntimeError("未設定 DEEPSEEK_API_KEY")
-        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
-        payload = {"model": "deepseek-chat","messages": messages,"temperature":0.3}
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=35)
-        r.raise_for_status()
-        data = safe_json(r)
-        reply = (data.get("choices",[{}])[0].get("message",{}) or {}).get("content","")
-        if reply and reply.strip():
-            return normalize_math_terms(reply)
-    except Exception as e:
-        print("[DeepSeek] 失敗:", e)
+    if deepseek_api_key:
+        try:
+            headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+            payload = {"model": "deepseek-chat","messages": messages,"temperature":0.3}
+            print("[DeepSeek] 發送請求...")
+            r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=35)
+            r.raise_for_status()
+            data = safe_json(r)
+            
+            if data and "choices" in data and len(data["choices"]) > 0:
+                choice = data["choices"][0]
+                if "message" in choice and "content" in choice["message"]:
+                    reply = choice["message"]["content"].strip()
+                    if reply:
+                        print(f"[DeepSeek] ✅ 成功，回應長度: {len(reply)}")
+                        return normalize_math_terms(reply)
+            
+            print(f"[DeepSeek] ⚠️ 回應格式異常")
+        except requests.exceptions.Timeout:
+            print("[DeepSeek] ⏱️ 請求超時")
+        except Exception as e:
+            print(f"[DeepSeek] ❌ 失敗: {e}")
 
     # 2) OpenAI（文字）
-    try:
-        if not openai_api_key:
-            raise RuntimeError("未設定 OPENAI_API_KEY")
-        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
-        payload2 = {"model":"gpt-4o-mini","messages":messages,"temperature":0.3}
-        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=35)
-        r.raise_for_status()
-        data = safe_json(r)
-        reply = (data.get("choices",[{}])[0].get("message",{}) or {}).get("content","")
-        if reply and reply.strip():
-            return normalize_math_terms(reply)
-    except Exception as e:
-        print("[OpenAI-text] 失敗:", e)
+    if openai_api_key:
+        try:
+            headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+            payload2 = {"model":"gpt-4o-mini","messages":messages,"temperature":0.3}
+            print("[OpenAI] 發送請求...")
+            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=35)
+            r.raise_for_status()
+            data = safe_json(r)
+            
+            if data and "choices" in data and len(data["choices"]) > 0:
+                choice = data["choices"][0]
+                if "message" in choice and "content" in choice["message"]:
+                    reply = choice["message"]["content"].strip()
+                    if reply:
+                        print(f"[OpenAI] ✅ 成功，回應長度: {len(reply)}")
+                        return normalize_math_terms(reply)
+            
+            print(f"[OpenAI] ⚠️ 回應格式異常")
+        except requests.exceptions.Timeout:
+            print("[OpenAI] ⏱️ 請求超時")
+        except Exception as e:
+            print(f"[OpenAI] ❌ 失敗: {e}")
 
     # 3) 超穩備援
+    print("[備援] 使用本地備援")
     return fallback_generate_reply(question)
 
 # -------------------------------
@@ -199,7 +230,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.8.4)")
+    print("✅ [安安] 資料庫就緒 (v4.8.5)")
 init_db()
 
 # -------------------------------
@@ -231,7 +262,7 @@ def allow(filename): return '.' in filename and filename.rsplit('.',1)[1].lower(
 def detect_mime_by_bytes(b: bytes) -> str:
     kind = imghdr.what(None, h=b)
     if kind == "png": return "image/png"
-    return "image/jpeg"  # 預設以 jpeg 處理
+    return "image/jpeg"
 
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
@@ -290,7 +321,6 @@ def analyze_image():
         except Exception as e:
             return jsonify({"result":f"⚠️ 圖片辨識不可用：{e}"}),500
 
-    # 記錄對話脈絡
     convo = session.setdefault("conversation", [])
     convo.append({"role":"user","content":"📷 [圖片題]（已上傳）請講解。"})
     convo.append({"role":"assistant","content": res or "（暫時無法解讀圖片）"})
@@ -298,6 +328,7 @@ def analyze_image():
     session["image_b64"] = base64.b64encode(data).decode()
     session["image_confused_count"] = 0
     session.modified = True
+    trim_conversation_history()
 
     return jsonify({"result": res, "success": True}), 200
 
@@ -327,6 +358,7 @@ def home():
             convo.append({"role":"assistant","content":normalize_math_terms(reply)})
             session["conversation"] = convo
             session.modified = True
+            trim_conversation_history()
             return render_template("index.html",conversation=convo)
 
         # 一般提問
@@ -345,8 +377,9 @@ def home():
         convo.append({"role":"assistant","content":reply})
         session["conversation"] = convo
         session.modified = True
+        trim_conversation_history()
 
-        # 日誌入庫（最佳努力）
+        # 日誌入庫
         try:
             conn = get_conn()
             conn.execute(
@@ -356,14 +389,6 @@ def home():
             conn.commit(); conn.close()
         except Exception as e:
             print("寫入 records 失敗：", e)
-
-    # Session 大小警告（最佳努力）
-    try:
-        size = len(json.dumps(dict(session), ensure_ascii=False).encode())
-        if size > 3000:
-            print(f"⚠️ Session 逼近上限：{size} bytes")
-    except Exception:
-        pass
 
     return render_template("index.html", conversation=convo)
 
@@ -409,9 +434,8 @@ def health():
         conn = get_conn(); conn.execute("SELECT 1"); conn.close()
     except Exception:
         db_ok = False
-    # ok 指示只做「可用度」展示，不強制要求三金鑰全有
-    ok_any_text = keys["deepseek"] or keys["openai"]  # 文字至少有一條路
-    ok_any_image = keys["google"] or keys["openai"]   # 圖像至少有一條路
+    ok_any_text = keys["deepseek"] or keys["openai"]
+    ok_any_image = keys["google"] or keys["openai"]
     overall_ok = (ok_any_text and ok_any_image and db_ok)
     return jsonify({"ok": overall_ok, "keys": keys, "db_ok": db_ok, "version": APP_VERSION}), 200
 
