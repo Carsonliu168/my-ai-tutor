@@ -1,19 +1,20 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.8.3-stable：
-# - 自動健康檢查 /health /smoke
-# - Session 容量預警
-# - Gemini 模型更新 gemini-1.5-flash-latest
-# - 全面繁體化、教學邏輯不變
+# v4.8.4-stable：
+# - 強化備援流程（永不卡死）
+# - API 呼叫 raise_for_status + 安全解析
+# - analyze_image 偵測 JPEG/PNG
+# - 全面繁體化與術語正規化
+# - 保留原 4.8.3 教學與 Session 行為
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
-import os, json, base64, requests, sqlite3, uuid, re
+import os, json, base64, requests, sqlite3, uuid, re, imghdr
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 # -------------------------------
 # ✅ Session 與模式設定
@@ -21,6 +22,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
+APP_VERSION = "v4.8.4-stable"
 
 # -------------------------------
 # ✅ 環境變數檢查
@@ -34,6 +36,7 @@ print("✅ DEEPSEEK_API_KEY" if deepseek_api_key else "⚠️ 未設定 DeepSeek
 print("✅ OPENAI_API_KEY" if openai_api_key else "⚠️ 未設定 OpenAI")
 print("✅ GOOGLE_API_KEY" if google_api_key else "⚠️ 未設定 Google")
 
+# Gemini 初始化
 try:
     import google.generativeai as genai
     if google_api_key:
@@ -54,8 +57,8 @@ def normalize_math_terms(s: str) -> str:
     s = re.sub(r'\blcm\b', '最小公倍數', s, flags=re.IGNORECASE)
     s = re.sub(r'\bgcd\b', '最大公因數', s, flags=re.IGNORECASE)
     s = re.sub(r'\bmod\b', '模（取餘數）', s, flags=re.IGNORECASE)
-    s = s.replace("质","質").replace("余数","餘數").replace("约数","約數")
-    s = s.replace("这","這").replace("个","個").replace("写","寫").replace("为","為")
+    s = (s.replace("质","質").replace("余数","餘數").replace("约数","約數")
+           .replace("这","這").replace("个","個").replace("写","寫").replace("为","為"))
     return s
 
 def is_pure_help_phrase(msg: str) -> bool:
@@ -73,8 +76,65 @@ def brief_history(max_items=4):
         lines.append(f"{role}：{content}")
     return "\n".join(lines)
 
+def safe_json(resp):
+    """確保 requests 回傳能安全解析 JSON；否則回空 dict。"""
+    try:
+        return resp.json()
+    except Exception:
+        return {}
+
 # -------------------------------
-# 🧠 DeepSeek / GPT 備援邏輯
+# 🧠 備援算式（確保永不卡死）
+# -------------------------------
+def fallback_generate_reply(user_text: str) -> str:
+    t = (user_text or "").replace(" ", "")
+    # 長方形：長是X、寬是Y
+    m = re.search(r"長(是)?(\d+(\.\d+)?)\D+寬(是)?(\d+(\.\d+)?)", t)
+    if m:
+        L = float(m.group(2)); W = float(m.group(5))
+        area = L * W
+        return normalize_math_terms(
+            f"先用備援解法：**長方形面積 = 長 × 寬 = {L} × {W} = {area}（平方公分）**。"
+        )
+
+    # 正方形：邊長
+    m = re.search(r"(正方形).*(邊長|邊是)(\d+(\.\d+)?)", t)
+    if m:
+        a = float(m.group(3)); area = a * a
+        return normalize_math_terms(f"備援解法：**正方形面積 = 邊長² = {a}² = {area}**。")
+
+    # 圓形：半徑
+    m = re.search(r"(圓形|圓).*(半徑|r)(是)?(\d+(\.\d+)?)", t)
+    if m:
+        r = float(m.group(4)); pi = 3.1416
+        area = pi * r * r
+        return normalize_math_terms(f"備援解法：**圓形面積 = πr² = 3.1416 × {r}² = {area:.4f}**。")
+
+    # 三角形：底×高÷2
+    m = re.search(r"(三角形).*(底|底邊)(是)?(\d+(\.\d+)?).*(高)(是)?(\d+(\.\d+)?)", t)
+    if m:
+        b = float(m.group(4)); h = float(m.group(8))
+        area = b * h / 2
+        return normalize_math_terms(f"備援解法：**三角形面積 = 底 × 高 ÷ 2 = {b} × {h} ÷ 2 = {area}**。")
+
+    # 菱形：對角線
+    m = re.search(r"(菱形).*(對角線|對角).*(是)?(\d+(\.\d+)?).*(和|與|、).*(是)?(\d+(\.\d+)?)", t)
+    if m:
+        d1 = float(m.group(4)); d2 = float(m.group(9))
+        area = d1 * d2 / 2
+        return normalize_math_terms(f"備援解法：**菱形面積 = 對角線乘積 ÷ 2 = {d1} × {d2} ÷ 2 = {area}**。")
+
+    # 梯形：上底下底高
+    m = re.search(r"(梯形).*(上底)(是)?(\d+(\.\d+)?).*(下底)(是)?(\d+(\.\d+)?).*(高)(是)?(\d+(\.\d+)?)", t)
+    if m:
+        a = float(m.group(4)); b = float(m.group(8)); h = float(m.group(12))
+        area = (a + b) * h / 2
+        return normalize_math_terms(f"備援解法：**梯形面積 = (上底+下底)×高÷2 = ({a}+{b})×{h}÷2 = {area}**。")
+
+    return normalize_math_terms("我收到你的問題了！主模型現在較忙，我先記錄並用簡化版思路協助。若能補充條件（單位、圖形資訊），我能更快完成。")
+
+# -------------------------------
+# 🧠 DeepSeek / OpenAI（文字）鏈
 # -------------------------------
 def ask_anan(question, mode="socratic", history_text=""):
     style = "採用蘇格拉底式提問法，引導學生思考。" if mode=="socratic" else "用清楚步驟給出答案。"
@@ -92,26 +152,38 @@ def ask_anan(question, mode="socratic", history_text=""):
         messages.append({"role":"assistant","content":"（收到上方脈絡）"})
     messages.append({"role":"user","content":question})
 
+    # 1) DeepSeek
     try:
+        if not deepseek_api_key:
+            raise RuntimeError("未設定 DEEPSEEK_API_KEY")
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {"model": "deepseek-chat","messages": messages,"temperature":0.3}
         r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=35)
-        reply = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
-        if reply: return normalize_math_terms(reply)
+        r.raise_for_status()
+        data = safe_json(r)
+        reply = (data.get("choices",[{}])[0].get("message",{}) or {}).get("content","")
+        if reply and reply.strip():
+            return normalize_math_terms(reply)
     except Exception as e:
-        print("DeepSeek 失敗:", e)
+        print("[DeepSeek] 失敗:", e)
 
+    # 2) OpenAI（文字）
     try:
-        if not openai_api_key: raise RuntimeError("未設定 OPENAI_API_KEY")
+        if not openai_api_key:
+            raise RuntimeError("未設定 OPENAI_API_KEY")
         headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
         payload2 = {"model":"gpt-4o-mini","messages":messages,"temperature":0.3}
         r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=35)
-        reply = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
-        if reply: return normalize_math_terms(reply)
+        r.raise_for_status()
+        data = safe_json(r)
+        reply = (data.get("choices",[{}])[0].get("message",{}) or {}).get("content","")
+        if reply and reply.strip():
+            return normalize_math_terms(reply)
     except Exception as e:
-        print("OpenAI 備援失敗:", e)
+        print("[OpenAI-text] 失敗:", e)
 
-    return "（目前伺服器忙碌，稍後再試 🙏）"
+    # 3) 超穩備援
+    return fallback_generate_reply(question)
 
 # -------------------------------
 # 📊 SQLite 初始化
@@ -120,13 +192,14 @@ DB_PATH = "data/anan.db"
 os.makedirs("data", exist_ok=True)
 def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
 def init_db():
-    conn = get_conn(); c = conn.cursor()
+    conn = get_conn()
+    c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS records(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.8.3)")
+    print("✅ [安安] 資料庫就緒 (v4.8.4)")
 init_db()
 
 # -------------------------------
@@ -136,6 +209,7 @@ TEACHER_HINT = "安安發現你還是有點困惑，建議明天問老師，他�
 def next_help_response(counter_name):
     c = session.get(counter_name, 0) + 1
     session[counter_name] = c
+    session.modified = True
     if c == 1:
         return "沒關係，我再簡單講一次：找公式→代入→計算→加單位。"
     elif c == 2:
@@ -145,13 +219,19 @@ def next_help_response(counter_name):
         return ask_anan("請用最簡單方式重講上一題，清楚列出公式、代入與答案。", mode="normal", history_text=hist)
     else:
         session[counter_name] = 3
+        session.modified = True
         return TEACHER_HINT
 
 # -------------------------------
-# 🖼️ analyze_image
+# 🖼️ analyze_image（Gemini→OpenAI 圖像備援）
 # -------------------------------
 ALLOWED = {'png','jpg','jpeg'}
-def allow(f): return '.' in f and f.rsplit('.',1)[1].lower() in ALLOWED
+def allow(filename): return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED
+
+def detect_mime_by_bytes(b: bytes) -> str:
+    kind = imghdr.what(None, h=b)
+    if kind == "png": return "image/png"
+    return "image/jpeg"  # 預設以 jpeg 處理
 
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
@@ -160,103 +240,148 @@ def analyze_image():
     img = request.files["image"]
     if img.filename=='' or not allow(img.filename):
         return jsonify({"result":"⚠️ 圖片格式錯誤"}),400
-    data = img.read(); res = None
 
-    instruction = (
+    data = img.read()
+    mime = detect_mime_by_bytes(data)
+    instruction = normalize_math_terms(
         "你是台灣數學老師安安，用繁體中文逐步講解這張圖片題："
         "1) 辨識題目；2) 寫公式；3) 代入；4) 算答案與單位；"
         "5) 若學生答對，直接肯定，不延伸其他主題。"
     )
+
+    res = None
+
+    # 1) Gemini 圖像
     try:
         if not google_api_key or genai is None:
             raise RuntimeError("未設定 GOOGLE_API_KEY")
         model = genai.GenerativeModel("gemini-1.5-flash-latest")
-        r = model.generate_content([instruction, {"mime_type":"image/jpeg","data":data}],
-            generation_config={"max_output_tokens":1024})
-        res = r.text
+        r = model.generate_content(
+            [instruction, {"mime_type": mime, "data": data}],
+            generation_config={"max_output_tokens":1024}
+        )
+        res = getattr(r, "text", None)
+        if res: res = normalize_math_terms(res)
     except Exception as e:
-        print("Gemini 失敗：", e)
+        print("[Gemini-image] 失敗：", e)
 
+    # 2) OpenAI 圖像備援
     if not res:
         try:
-            if not openai_api_key: raise RuntimeError("未設定 OPENAI_API_KEY")
+            if not openai_api_key:
+                raise RuntimeError("未設定 OPENAI_API_KEY")
             b64 = base64.b64encode(data).decode()
-            h = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
-            p = {"model":"gpt-4o","messages":[{"role":"user","content":[
-                {"type":"text","text":instruction},
-                {"type":"image_url","image_url":{"url":f"data:image/jpeg;base64,{b64}"}}]}],"temperature":0.2}
-            r = requests.post("https://api.openai.com/v1/chat/completions", headers=h, json=p, timeout=60)
-            res = r.json()["choices"][0]["message"]["content"]
+            headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model":"gpt-4o",
+                "messages":[
+                    {"role":"user","content":[
+                        {"type":"text","text":instruction},
+                        {"type":"image_url","image_url":{"url":f"data:{mime};base64,{b64}"}}
+                    ]}
+                ],
+                "temperature":0.2
+            }
+            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
+            r.raise_for_status()
+            data_json = safe_json(r)
+            res = (((data_json.get("choices",[{}])[0]).get("message",{})) or {}).get("content","")
+            if res: res = normalize_math_terms(res)
         except Exception as e:
             return jsonify({"result":f"⚠️ 圖片辨識不可用：{e}"}),500
 
-    res = normalize_math_terms(res)
+    # 記錄對話脈絡
+    convo = session.setdefault("conversation", [])
+    convo.append({"role":"user","content":"📷 [圖片題]（已上傳）請講解。"})
+    convo.append({"role":"assistant","content": res or "（暫時無法解讀圖片）"})
     session["guided_topic"] = "image_explain"
     session["image_b64"] = base64.b64encode(data).decode()
     session["image_confused_count"] = 0
-    convo = session.setdefault("conversation", [])
-    convo.append({"role":"user","content":"📷 [圖片題]（已上傳）請講解。"})
-    convo.append({"role":"assistant","content":res})
     session.modified = True
-    return jsonify({"result":res,"success":True}),200
+
+    return jsonify({"result": res, "success": True}), 200
 
 # -------------------------------
 # 💬 主要對話邏輯
 # -------------------------------
 @app.before_request
 def ensure_user():
-    if "user_id" not in session: session["user_id"]=str(uuid.uuid4())
+    if "user_id" not in session:
+        session["user_id"]=str(uuid.uuid4())
+        session.modified = True
     session.permanent = True
 
 @app.route("/", methods=["GET","POST"])
 def home():
-    convo=session.setdefault("conversation",[])
+    convo = session.setdefault("conversation", [])
     if request.method=="POST":
-        msg=request.form.get("message","").strip()
-        if not msg: return render_template("index.html",conversation=convo)
-        if is_pure_help_phrase(msg):
-            key="image_confused_count" if session.get("guided_topic")=="image_explain" else "confused_count"
-            reply=next_help_response(key)
-            convo.append({"role":"user","content":msg})
-            convo.append({"role":"assistant","content":normalize_math_terms(reply)})
-            session["conversation"]=convo
+        msg = (request.form.get("message","") or "").strip()
+        if not msg:
             return render_template("index.html",conversation=convo)
 
-        session["confused_count"]=0; session["image_confused_count"]=0
-        hist=brief_history(6)
-        reply=ask_anan(msg,"socratic",hist)
+        # 「不懂」流程
+        if is_pure_help_phrase(msg):
+            key = "image_confused_count" if session.get("guided_topic")=="image_explain" else "confused_count"
+            reply = next_help_response(key)
+            convo.append({"role":"user","content":msg})
+            convo.append({"role":"assistant","content":normalize_math_terms(reply)})
+            session["conversation"] = convo
+            session.modified = True
+            return render_template("index.html",conversation=convo)
+
+        # 一般提問
+        session["confused_count"] = 0
+        session["image_confused_count"] = 0
+        hist = brief_history(6)
+        try:
+            reply = ask_anan(msg, "socratic", hist)
+            if not reply or not str(reply).strip():
+                reply = fallback_generate_reply(msg)
+        except Exception as e:
+            print("[home] 主流程失敗：", e)
+            reply = fallback_generate_reply(msg)
+
         convo.append({"role":"user","content":msg})
         convo.append({"role":"assistant","content":reply})
-        session["conversation"]=convo
+        session["conversation"] = convo
+        session.modified = True
 
+        # 日誌入庫（最佳努力）
         try:
-            conn=get_conn()
-            conn.execute("INSERT INTO records (user_id,question,topic,is_correct) VALUES (?,?,?,?)",
-                (session["user_id"],msg,session.get("guided_topic","一般"),None))
+            conn = get_conn()
+            conn.execute(
+                "INSERT INTO records (user_id,question,topic,is_correct) VALUES (?,?,?,?)",
+                (session["user_id"], msg, session.get("guided_topic","一般"), None)
+            )
             conn.commit(); conn.close()
         except Exception as e:
             print("寫入 records 失敗：", e)
 
-    # Session 大小警告
+    # Session 大小警告（最佳努力）
     try:
-        size=len(json.dumps(session,ensure_ascii=False).encode())
-        if size>3000: print(f"⚠️ Session 逼近上限：{size} bytes")
-    except: pass
+        size = len(json.dumps(dict(session), ensure_ascii=False).encode())
+        if size > 3000:
+            print(f"⚠️ Session 逼近上限：{size} bytes")
+    except Exception:
+        pass
 
-    return render_template("index.html",conversation=convo)
+    return render_template("index.html", conversation=convo)
 
 # -------------------------------
 # 📩 feedback
 # -------------------------------
 @app.route("/feedback", methods=["POST"])
 def feedback():
-    d=request.get_json(); under=d.get("understood")
-    if under is None: return jsonify({"status":"error"})
+    d = request.get_json(silent=True) or {}
+    under = d.get("understood")
+    if under is None:
+        return jsonify({"status":"error"})
     if under:
         session["confused_count"]=0; session["image_confused_count"]=0
+        session.modified = True
         return jsonify({"status":"ok","reply":"太棒了～安安替你開心 💪 下次挑戰更難一點！"})
-    key="image_confused_count" if session.get("guided_topic")=="image_explain" else "confused_count"
-    reply=next_help_response(key)
+    key = "image_confused_count" if session.get("guided_topic")=="image_explain" else "confused_count"
+    reply = next_help_response(key)
     return jsonify({"status":"ok","reply":normalize_math_terms(reply)})
 
 # -------------------------------
@@ -265,7 +390,8 @@ def feedback():
 @app.route("/clear")
 def clear():
     for k in ["conversation","confused_count","guided_topic","image_b64","image_confused_count"]:
-        session.pop(k,None)
+        session.pop(k, None)
+    session.modified = True
     return redirect(url_for("home"))
 
 # -------------------------------
@@ -273,17 +399,27 @@ def clear():
 # -------------------------------
 @app.route("/health")
 def health():
-    keys={"deepseek":bool(deepseek_api_key),"openai":bool(openai_api_key),"google":bool(google_api_key)}
-    db_ok=True
+    keys = {
+        "deepseek": bool(deepseek_api_key),
+        "openai": bool(openai_api_key),
+        "google": bool(google_api_key),
+    }
+    db_ok = True
     try:
-        conn=get_conn(); conn.execute("SELECT 1"); conn.close()
-    except: db_ok=False
-    return jsonify({"ok":all(keys.values()) and db_ok,"keys":keys,"db_ok":db_ok,"version":"v4.8.3-stable"}),200
+        conn = get_conn(); conn.execute("SELECT 1"); conn.close()
+    except Exception:
+        db_ok = False
+    # ok 指示只做「可用度」展示，不強制要求三金鑰全有
+    ok_any_text = keys["deepseek"] or keys["openai"]  # 文字至少有一條路
+    ok_any_image = keys["google"] or keys["openai"]   # 圖像至少有一條路
+    overall_ok = (ok_any_text and ok_any_image and db_ok)
+    return jsonify({"ok": overall_ok, "keys": keys, "db_ok": db_ok, "version": APP_VERSION}), 200
 
 @app.route("/smoke")
 def smoke():
-    session["smoke"]=datetime.utcnow().isoformat()
-    return jsonify({"ok":True,"session":session.get("smoke")}),200
+    session["smoke"] = datetime.utcnow().isoformat()
+    session.modified = True
+    return jsonify({"ok": True, "session": session.get("smoke"), "version": APP_VERSION}), 200
 
 # -------------------------------
 # 🚀 run
