@@ -3,41 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>數學小老師安安 v4.5.3</title>
+  <title>數學小老師安安 v4.6 柔和版</title>
   <style>
     body {
       font-family: "Microsoft JhengHei", Arial, sans-serif;
-      background: linear-gradient(135deg, #e0f7fa, #f1f8e9);
+      background: linear-gradient(135deg, #ffeef2, #fff9f9);
       margin: 0;
       padding: 0;
       text-align: center;
     }
     h1 {
-      color: #0078d7;
+      color: #d81b60;
       margin-top: 30px;
+      text-shadow: 1px 1px 2px #ffd6e0;
     }
     .chat-box {
       width: 90%;
       max-width: 800px;
       margin: 20px auto;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 0 25px rgba(255,182,193,0.3);
       padding: 20px;
       text-align: left;
-      line-height: 1.6;
+      line-height: 1.7;
     }
     .message {
       margin: 10px 0;
-      padding: 10px;
-      border-radius: 8px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      word-wrap: break-word;
     }
     .user {
-      background-color: #e3f2fd;
+      background-color: #ffe4ec;
       text-align: right;
+      color: #ad1457;
     }
     .assistant {
-      background-color: #f1f8e9;
+      background-color: #fff3cd;
+      color: #6d4c41;
     }
     form {
       margin-top: 15px;
@@ -45,44 +49,50 @@
     input[type=text] {
       width: 80%;
       padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
+      border-radius: 10px;
+      border: 1px solid #f48fb1;
       font-size: 16px;
+      box-shadow: inset 0 0 5px rgba(255,182,193,0.2);
     }
     button {
-      padding: 10px 15px;
+      padding: 10px 18px;
       margin: 5px;
       border: none;
-      border-radius: 8px;
-      background-color: #0078d7;
+      border-radius: 10px;
+      background-color: #ec407a;
       color: white;
       font-size: 16px;
       cursor: pointer;
+      transition: 0.2s;
     }
     button:hover {
-      background-color: #005fa3;
+      background-color: #d81b60;
     }
     .feedback-buttons {
-      margin-top: 10px;
+      margin-top: 15px;
       text-align: center;
     }
     .feedback-buttons button {
       width: 120px;
+      background-color: #f06292;
+    }
+    .feedback-buttons button:hover {
+      background-color: #e91e63;
     }
     .upload-section {
-      margin-top: 20px;
+      margin-top: 25px;
     }
   </style>
 </head>
 <body>
-  <h1>🧮 數學小老師安安</h1>
+  <h1>🩷 數學小老師安安</h1>
 
   <div class="chat-box" id="chatBox">
     {% for msg in conversation %}
       {% if msg.role == 'user' %}
-        <div class="message user">👤 你：{{ msg.content }}</div>
+        <div class="message user">👧 你：{{ msg.content }}</div>
       {% else %}
-        <div class="message assistant">🤖 安安老師：{{ msg.content|safe }}</div>
+        <div class="message assistant">👩‍🏫 安安老師：{{ msg.content|safe }}</div>
       {% endif %}
     {% endfor %}
   </div>
@@ -102,7 +112,7 @@
   </div>
 
   <div class="feedback-buttons">
-    <button onclick="sendFeedback(true)">懂了 👍</button>
+    <button onclick="sendFeedback(true)">懂了 💡</button>
     <button onclick="sendFeedback(false)">不懂 😵</button>
   </div>
 
