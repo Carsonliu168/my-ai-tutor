@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.0-FINAL：完全修復所有問題
+# v4.9.2-no-cache：完整版
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -14,7 +14,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.1-teaching-improved"
+APP_VERSION = "v4.9.2-no-cache"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -47,14 +47,10 @@ def normalize_math_terms(s):
     return s
 
 def clean_latex_format(s):
-    """修復錯誤的 LaTeX 格式 - 這個函數很重要！"""
     if not s:
         return s
-    # 修復 [ xxx ] -> $$xxx$$
     s = re.sub(r'\[\s*([^\[\]]+?)\s*\]', r'$$\1$$', s)
-    # 修復 ( \xxx{yyy} ) -> $\xxx{yyy}$
     s = re.sub(r'\(\s*\\(\w+)\{([^}]+)\}\s*\)', r'$\\\1{\2}$', s)
-    # 修復 ( ADEF ) -> $ADEF$
     s = re.sub(r'\(\s*([A-Z]{1,4})\s*\)', r'$\1$', s)
     return s
 
@@ -138,7 +134,7 @@ def ask_anan(question, mode="socratic", history_text=""):
 - 答對立即肯定並收尾，不延伸其他主題。
 - 答錯時才引導，不要在答對後繼續教學。
 - 使用台灣繁體中文，口吻親切。
-- 數學公式使用 LaTeX：行內 $公式$，區塊 $公式$
+- 數學公式使用 LaTeX：行內 $公式$，區塊 $$公式$$
 """
     system_prompt = f"你是數學老師安安。{style}\n{rules}"
 
@@ -163,7 +159,6 @@ def ask_anan(question, mode="socratic", history_text=""):
                     reply = choice["message"]["content"].strip()
                     if reply:
                         print(f"[DeepSeek] ✅ 成功")
-                        # 🔥 關鍵：清理 LaTeX 格式
                         reply = clean_latex_format(reply)
                         return normalize_math_terms(reply)
         except Exception as e:
@@ -184,7 +179,6 @@ def ask_anan(question, mode="socratic", history_text=""):
                     reply = choice["message"]["content"].strip()
                     if reply:
                         print(f"[OpenAI] ✅ 成功")
-                        # 🔥 關鍵：清理 LaTeX 格式
                         reply = clean_latex_format(reply)
                         return normalize_math_terms(reply)
         except Exception as e:
@@ -203,23 +197,29 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.0)")
+    print("✅ [安安] 資料庫就緒 (v4.9.2)")
 init_db()
 
-TEACHER_HINT = "安安發現你還是有點困惑，建議明天問老師！"
+TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
+
 def next_help_response(counter_name):
     c = session.get(counter_name, 0) + 1
     session[counter_name] = c
     session.modified = True
+    
     if c == 1:
-        return "沒關係，我再簡單講一次：找公式→代入→計算→加單位。"
+        return "沒關係，我再簡單講一次：**找公式 → 代入數字 → 計算 → 寫單位**。試試看？"
     elif c == 2:
-        return "我們換個說法試試～你記得剛剛的公式是哪一個嗎？"
+        return "換個方式說～你記得剛剛的公式是什麼嗎？我們一步一步來！"
     elif c == 3:
         hist = brief_history(4)
-        return ask_anan("請用最簡單方式重講上一題，清楚列出公式、代入與答案。", mode="normal", history_text=hist)
+        return ask_anan(
+            "學生還是不懂，請直接給出完整解答：明確寫出公式、代入數字、計算過程、最終答案（含單位）。", 
+            mode="normal", 
+            history_text=hist
+        )
     else:
-        session[counter_name] = 3
+        session[counter_name] = 4
         session.modified = True
         return TEACHER_HINT
 
@@ -299,7 +299,6 @@ def ensure_user():
     if "user_id" not in session:
         session["user_id"]=str(uuid.uuid4())
         session.modified = True
-    session.permanent = True
 
 @app.route("/", methods=["GET","POST"])
 def home():
