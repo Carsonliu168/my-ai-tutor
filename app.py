@@ -14,7 +14,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.0-FINAL"
+APP_VERSION = "v4.9.1-teaching-improved"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -124,13 +124,21 @@ def ask_anan(question, mode="socratic", history_text=""):
     if not deepseek_api_key and not openai_api_key:
         return fallback_generate_reply(question)
     
-    style = "採用蘇格拉底式提問法，引導學生思考。" if mode=="socratic" else "用清楚步驟給出答案。"
+    if mode == "socratic":
+        style = """採用蘇格拉底式提問法，分階段引導學生：
+第一階段：先問學生是否知道相關公式或概念（例如：「你知道長方形面積怎麼算嗎？」）
+第二階段：等學生回答後，再引導他們如何應用（例如：「那你覺得這題要怎麼用這個公式呢？」）
+第三階段：引導計算過程，但不要直接列出完整算式
+重要：不要一次就把公式、代入、計算都給出來，要讓學生有思考空間。"""
+    else:
+        style = "用清楚步驟給出完整答案，包含公式、代入、計算、答案。"
+    
     rules = """
 教學規範：
-- 答對立即肯定並收尾。
-- 答錯或說「不懂」時才引導。
+- 答對立即肯定並收尾，不延伸其他主題。
+- 答錯時才引導，不要在答對後繼續教學。
 - 使用台灣繁體中文，口吻親切。
-- 數學公式使用 LaTeX：行內 $公式$，區塊 $$公式$$
+- 數學公式使用 LaTeX：行內 $公式$，區塊 $公式$
 """
     system_prompt = f"你是數學老師安安。{style}\n{rules}"
 
