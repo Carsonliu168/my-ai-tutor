@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.8-dual-verify：加入二次驗證機制
+# v4.9.9-final：修正所有 LaTeX 格式問題
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -15,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.8-dual-verify"
+APP_VERSION = "v4.9.9-final"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -79,27 +79,39 @@ def normalize_math_terms(s):
     return s
 
 def clean_latex_format(s):
+    """
+    清理和標準化 LaTeX 格式
+    v4.9.9: 完整處理所有括號格式
+    """
     if not s:
         return s
     
     # 處理 [ ... ] → $$ ... $$（區塊公式）
     s = re.sub(r'\[\s*([^\[\]]+?)\s*\]', r'$$\1$$', s)
     
-    # 🔥 新增：處理 ( \overline{AB} ) → $\overline{AB}$
-    # 匹配 ( \命令{內容} ) 格式
+    # 🔥 處理嵌套括號 ( (x, y, z) ) → $(x, y, z)$
+    s = re.sub(r'\(\s*\(([^)]+)\)\s*\)', r'$(\1)$', s)
+    
+    # 🔥 處理絕對值符號 (|...|) → $|...|$
+    s = re.sub(r'\(\|([^|]+)\|\)', r'$|\1|$', s)
+    
+    # 🔥 處理完整的 LaTeX 命令 (\命令{內容}) → $\命令{內容}$
+    # 這會處理 (\overrightarrow{r})、(\vec{a})、(\text{距離}) 等
+    s = re.sub(r'\(\\([a-zA-Z]+)\{([^}]+)\}\)', r'$\\\1{\2}$', s)
+    
+    # 處理 ( \overline{AB} ) → $\overline{AB}$（已有的，保留以防萬一）
     s = re.sub(r'\(\s*(\\[a-zA-Z]+\{[^}]+\})\s*\)', r'$\1$', s)
     
-    # 🔥 新增：處理 ( \frac{1}{2} ) 等複雜公式
-    # 匹配 ( \命令{...}{...} ) 格式
+    # 處理 ( \frac{1}{2} ) 等雙參數命令
     s = re.sub(r'\(\s*(\\[a-zA-Z]+\{[^}]+\}\{[^}]+\})\s*\)', r'$\1$', s)
     
-    # 處理 ( \命令{內容} ) → $\命令{內容}$（原有的，但改進）
+    # 處理單參數命令（備用）
     s = re.sub(r'\(\s*\\(\w+)\{([^}]+)\}\s*\)', r'$\\\1{\2}$', s)
     
-    # 處理單字母變數 (A)、(AB)、(ABCD) → $A$、$AB$、$ABCD$
+    # 處理單字母變數 (A)、(AB) 等 → $A$、$AB$
     s = re.sub(r'\(\s*([A-Z]{1,4})\s*\)', r'$\1$', s)
     
-    # 🔥 新增：處理中文括號內的 LaTeX
+    # 處理中文括號內的 LaTeX
     s = re.sub(r'（\s*(\\[a-zA-Z]+\{[^}]+\})\s*）', r'$\1$', s)
     
     return s
@@ -394,7 +406,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.8)")
+    print("✅ [安安] 資料庫就緒 (v4.9.9)")
 init_db()
 
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
@@ -439,7 +451,7 @@ def analyze_image():
     data = img.read()
     mime = detect_mime_by_bytes(data)
     
-    # 🔥 v4.9.8 強化版指令（移除檢查清單，避免顯示給學生）
+    # 🔥 v4.9.9 強化版指令（移除檢查清單，避免顯示給學生）
     instruction = """你是台灣數學老師安安，用繁體中文逐步講解這張圖片題。
 
 解題要求：
@@ -522,7 +534,6 @@ def analyze_image():
     if question_text and deepseek_api_key:
         print(f"[二次驗證] 開始用 DeepSeek 驗證...")
         verification_result = verify_with_deepseek(question_text)
-        
         if verification_result:
             # 清理驗證結果的檢查清單
             verification_result = remove_internal_checklist(verification_result)
