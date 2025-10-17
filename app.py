@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.6-latex-fix：修復 LaTeX 格式問題
+# v4.9.7-accuracy：加強圖片題推理準確性
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -15,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.6-latex-fix"
+APP_VERSION = "v4.9.7-accuracy"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -309,7 +309,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.6)")
+    print("✅ [安安] 資料庫就緒 (v4.9.7)")
 init_db()
 
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
@@ -354,8 +354,17 @@ def analyze_image():
     data = img.read()
     mime = detect_mime_by_bytes(data)
     
+    # 🔥 v4.9.7 強化版指令：提升立體幾何準確性
     instruction = """你是台灣數學老師安安，用繁體中文逐步講解這張圖片題。
-    
+
+⚠️ **嚴格規則（必須遵守）：**
+1. **立體幾何題**必須非常仔細分析每個選項，不可猜測
+2. 對於「何者錯誤」的題目，**必須逐一檢查每個選項**是否正確
+3. **線面垂直判斷標準**：
+   - 線必須垂直於面上的所有線
+   - 線不能在該面上（在面上就不可能垂直）
+4. 使用幾何定義嚴格判斷，**寧可慢也要準確**
+
 教學風格：
 - 親切、幽默、有耐心
 - 用台灣生活例子（珍珠奶茶、雞排、YouBike、便利商店等）
@@ -363,14 +372,22 @@ def analyze_image():
 - 數學公式用 $公式$ 或 $$公式$$ 格式
 - 絕對不使用簡體字！
 
-步驟：
-1) 辨識題目
-2) 寫公式（可用生活例子說明）
-3) 代入數字
-4) 計算答案
-5) 若學生答對直接肯定
+解題步驟（嚴格執行）：
+1) **仔細辨識題目**：看清楚問什麼（正確？錯誤？）
+2) **辨識圖形結構**：標示清楚各點、線、面的位置關係
+3) **逐一分析選項**：
+   - 用 ① ② ③ ④ 明確編號
+   - 每個選項都要寫判斷理由
+   - 使用幾何定義（如：線在面上、線平行於面、線垂直於面）
+4) **明確指出答案**：「正確答案是 ③」
+5) **可用生活例子**：但不能犧牲準確性
 
-保持簡潔，不要太囉嗦！"""
+**檢查清單：**
+- □ 是否逐一檢查了所有選項？
+- □ 是否使用了正確的幾何定義？
+- □ 答案是否明確清楚？
+
+保持簡潔，但**必須準確**！"""
 
     res = None
 
@@ -379,7 +396,10 @@ def analyze_image():
             model = genai.GenerativeModel("gemini-1.5-flash")
             r = model.generate_content(
                 [instruction, {"mime_type": mime, "data": data}],
-                generation_config={"max_output_tokens":1024}
+                generation_config={
+                    "max_output_tokens": 1500,
+                    "temperature": 0.1  # 降低溫度提高準確性
+                }
             )
             res = getattr(r, "text", None)
             if res: 
@@ -398,7 +418,7 @@ def analyze_image():
                     {"type":"text","text":instruction},
                     {"type":"image_url","image_url":{"url":f"data:{mime};base64,{b64}"}}
                 ]}],
-                "temperature":0.2
+                "temperature":0.1  # 降低溫度提高準確性
             }
             r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
             r.raise_for_status()
