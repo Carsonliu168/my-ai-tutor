@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.7-accuracy：加強圖片題推理準確性
+# v4.9.8-dual-verify：加入二次驗證機制
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -15,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.7-accuracy"
+APP_VERSION = "v4.9.8-dual-verify"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -298,6 +298,91 @@ def ask_anan(question, mode="socratic", history_text=""):
 
     return fallback_generate_reply(question)
 
+# 🔥 新增：提取圖片題目文字的函數
+def extract_question_text(ocr_result):
+    """從圖片辨識結果中提取純題目文字"""
+    if not ocr_result:
+        return None
+    
+    # 移除解題過程，只保留題目
+    lines = ocr_result.split('\n')
+    question_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        # 跳過空行和明顯的解答標記
+        if not line or any(x in line for x in ['步驟', '解答', '分析', '答案', '我們來', '首先', '公式']):
+            break
+        question_lines.append(line)
+    
+    question_text = '\n'.join(question_lines).strip()
+    
+    # 如果提取失敗，返回 None
+    if len(question_text) < 10:
+        return None
+    
+    return question_text
+
+# 🔥 新增：二次驗證函數
+def verify_with_deepseek(question_text):
+    """用 DeepSeek 重新計算文字題目"""
+    if not deepseek_api_key or not question_text:
+        return None
+    
+    verification_prompt = f"""請解答以下數學題目，要求：
+1. 逐步計算，每一步都要寫出來
+2. 最後明確指出答案（如：答案是 ③ 或 答案是 120°）
+3. 使用台灣繁體中文
+4. 數學公式用 LaTeX 格式
+
+題目：
+{question_text}
+"""
+    
+    try:
+        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": verification_prompt}],
+            "temperature": 0.1
+        }
+        
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=35)
+        r.raise_for_status()
+        data = safe_json(r)
+        
+        if data and "choices" in data and len(data["choices"]) > 0:
+            reply = data["choices"][0].get("message", {}).get("content", "").strip()
+            if reply:
+                print(f"[DeepSeek驗證] ✅ 成功")
+                return clean_latex_format(normalize_math_terms(reply))
+    except Exception as e:
+        print(f"[DeepSeek驗證] ❌ {e}")
+    
+    return None
+
+# 🔥 新增：清理 AI 內部檢查清單的函數
+def remove_internal_checklist(text):
+    """移除 AI 回應中的內部檢查清單"""
+    if not text:
+        return text
+    
+    # 移除檢查清單區塊
+    patterns = [
+        r'\*\*檢查清單[：:]\*\*.*?(?=\n\n|\Z)',  # **檢查清單：** 開頭的區塊
+        r'檢查清單[：:].*?(?=\n\n|\Z)',  # 檢查清單： 開頭的區塊
+        r'- □.*?(?=\n[^-□]|\Z)',  # 所有 - □ 開頭的項目
+        r'\* □.*?(?=\n[^\*□]|\Z)',  # 所有 * □ 開頭的項目
+    ]
+    
+    for pattern in patterns:
+        text = re.sub(pattern, '', text, flags=re.DOTALL | re.MULTILINE)
+    
+    # 清理多餘空行
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    return text.strip()
+
 DB_PATH = "data/anan.db"
 os.makedirs("data", exist_ok=True)
 def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -309,7 +394,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.7)")
+    print("✅ [安安] 資料庫就緒 (v4.9.8)")
 init_db()
 
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
@@ -354,16 +439,16 @@ def analyze_image():
     data = img.read()
     mime = detect_mime_by_bytes(data)
     
-    # 🔥 v4.9.7 強化版指令：提升立體幾何準確性
+    # 🔥 v4.9.8 強化版指令（移除檢查清單，避免顯示給學生）
     instruction = """你是台灣數學老師安安，用繁體中文逐步講解這張圖片題。
 
-⚠️ **嚴格規則（必須遵守）：**
-1. **立體幾何題**必須非常仔細分析每個選項，不可猜測
-2. 對於「何者錯誤」的題目，**必須逐一檢查每個選項**是否正確
-3. **線面垂直判斷標準**：
-   - 線必須垂直於面上的所有線
-   - 線不能在該面上（在面上就不可能垂直）
-4. 使用幾何定義嚴格判斷，**寧可慢也要準確**
+解題要求：
+1. 立體幾何題、三角函數題必須非常仔細，每一步都要驗證
+2. 對於「何者錯誤」的題目，必須逐一檢查每個選項
+3. 計算後必須驗證答案：
+   - 三角函數：算出 sin 也要算 cos 來確認角度範圍
+   - 幾何題：用定義檢查每個選項
+4. 使用幾何定義嚴格判斷，寧可慢也要準確
 
 教學風格：
 - 親切、幽默、有耐心
@@ -372,42 +457,41 @@ def analyze_image():
 - 數學公式用 $公式$ 或 $$公式$$ 格式
 - 絕對不使用簡體字！
 
-解題步驟（嚴格執行）：
-1) **仔細辨識題目**：看清楚問什麼（正確？錯誤？）
-2) **辨識圖形結構**：標示清楚各點、線、面的位置關係
-3) **逐一分析選項**：
-   - 用 ① ② ③ ④ 明確編號
-   - 每個選項都要寫判斷理由
-   - 使用幾何定義（如：線在面上、線平行於面、線垂直於面）
-4) **明確指出答案**：「正確答案是 ③」
-5) **可用生活例子**：但不能犧牲準確性
+解題步驟：
+1) 仔細辨識題目和圖形結構
+2) 逐步計算：每一步都寫出來，不跳步驟
+3) 驗證答案：用另一種方法確認
+4) 明確指出答案：「答案是 ③」或「答案是 (D) 120°」
 
-**檢查清單：**
-- □ 是否逐一檢查了所有選項？
-- □ 是否使用了正確的幾何定義？
-- □ 答案是否明確清楚？
-
-保持簡潔，但**必須準確**！"""
+保持簡潔，但必須準確！不要在回答中加入檢查清單或內部提醒。"""
 
     res = None
+    question_text = None
 
+    # 🔥 嘗試 1：使用 Gemini（免費）
     try:
         if google_api_key and genai:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # 🔥 修正：使用正確的 Gemini 模型名稱
+            model = genai.GenerativeModel("gemini-1.5-pro")
             r = model.generate_content(
                 [instruction, {"mime_type": mime, "data": data}],
                 generation_config={
-                    "max_output_tokens": 1500,
-                    "temperature": 0.1  # 降低溫度提高準確性
+                    "max_output_tokens": 2000,
+                    "temperature": 0.1
                 }
             )
             res = getattr(r, "text", None)
-            if res: 
+            if res:
                 res = clean_latex_format(normalize_math_terms(res))
-                print(f"[Gemini] ✅")
+                res = remove_internal_checklist(res)  # 🔥 清理檢查清單
+                print(f"[Gemini] ✅ 成功")
+                
+                # 提取題目文字
+                question_text = extract_question_text(res)
     except Exception as e:
         print(f"[Gemini] ❌ {e}")
 
+    # 🔥 嘗試 2：如果 Gemini 失敗，使用 OpenAI
     if not res and openai_api_key:
         try:
             b64 = base64.b64encode(data).decode()
@@ -418,17 +502,47 @@ def analyze_image():
                     {"type":"text","text":instruction},
                     {"type":"image_url","image_url":{"url":f"data:{mime};base64,{b64}"}}
                 ]}],
-                "temperature":0.1  # 降低溫度提高準確性
+                "temperature":0.1
             }
             r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
             r.raise_for_status()
             data_json = safe_json(r)
             res = (data_json.get("choices",[{}])[0].get("message",{}) or {}).get("content","")
-            if res: 
+            if res:
                 res = clean_latex_format(normalize_math_terms(res))
-                print(f"[OpenAI-image] ✅")
+                res = remove_internal_checklist(res)  # 🔥 清理檢查清單
+                print(f"[OpenAI-image] ✅ 成功")
+                
+                # 提取題目文字
+                question_text = extract_question_text(res)
         except Exception as e:
             return jsonify({"result":f"⚠️ {e}"}),500
+
+    # 🔥 嘗試 3：二次驗證（如果提取到題目文字）
+    if question_text and deepseek_api_key:
+        print(f"[二次驗證] 開始用 DeepSeek 驗證...")
+        verification_result = verify_with_deepseek(question_text)
+        
+        if verification_result:
+            # 清理驗證結果的檢查清單
+            verification_result = remove_internal_checklist(verification_result)
+            
+            # 組合結果：顯示兩個解答供參考
+            final_result = f"""## 📷 圖片辨識解答
+
+{res}
+
+---
+
+## 🔍 驗算結果（DeepSeek 二次驗證）
+
+{verification_result}
+
+---
+
+💡 **安安小提醒**：我用了兩種方法幫你算，如果兩個答案不一樣，建議你自己再驗算一次，或明天問老師確認喔！"""
+            
+            res = final_result
 
     convo = session.get("conversation", [])
     convo.append({"role":"user","content":"📷 [圖片題]"})
