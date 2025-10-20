@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v4.9.9-final：修正所有 LaTeX 格式問題
+# v4.9.10：修正 Gemini API 模型名稱問題
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -15,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v4.9.9-final"
+APP_VERSION = "v4.9.10"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -26,13 +26,22 @@ print("✅ DEEPSEEK_API_KEY" if deepseek_api_key else "⚠️ 未設定 DeepSeek
 print("✅ OPENAI_API_KEY" if openai_api_key else "⚠️ 未設定 OpenAI")
 print("✅ GOOGLE_API_KEY" if google_api_key else "⚠️ 未設定 Google")
 
+# 🔥 修正：正確初始化 Gemini API
 try:
     import google.generativeai as genai
     if google_api_key:
         genai.configure(api_key=google_api_key)
-        print("✅ Gemini API 已就緒")
+        # 測試連線並列出可用模型
+        try:
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            print(f"✅ Gemini API 已就緒，可用模型：{len(available_models)} 個")
+            if available_models:
+                print(f"   推薦模型：{available_models[0]}")
+        except Exception as e:
+            print(f"⚠️ Gemini 模型列表獲取失敗: {e}")
     else:
         print("⚠️ 未設定 GOOGLE_API_KEY")
+        genai = None
 except Exception as e:
     print(f"⚠️ Gemini 初始化失敗: {e}")
     genai = None
@@ -406,7 +415,7 @@ def init_db():
         user_id TEXT, question TEXT, topic TEXT,
         is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit(); conn.close()
-    print("✅ [安安] 資料庫就緒 (v4.9.9)")
+    print(f"✅ [安安] 資料庫就緒 ({APP_VERSION})")
 init_db()
 
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
@@ -440,6 +449,47 @@ def detect_mime_by_bytes(b):
     if kind == "png": return "image/png"
     return "image/jpeg"
 
+# 🔥 修正：選擇最佳可用的 Gemini 模型
+def get_best_gemini_model():
+    """自動選擇最佳可用的 Gemini 模型"""
+    if not genai:
+        return None
+    
+    # 按優先順序嘗試的模型列表
+    preferred_models = [
+        'gemini-1.5-pro-latest',
+        'gemini-1.5-flash-latest', 
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-pro-vision',
+        'gemini-pro'
+    ]
+    
+    try:
+        # 獲取所有支援 generateContent 的模型
+        available_models = [
+            m.name.replace('models/', '') 
+            for m in genai.list_models() 
+            if 'generateContent' in m.supported_generation_methods
+        ]
+        
+        # 按優先順序選擇第一個可用的模型
+        for model in preferred_models:
+            if model in available_models:
+                print(f"[Gemini] 使用模型: {model}")
+                return model
+        
+        # 如果沒有匹配，使用第一個可用模型
+        if available_models:
+            model = available_models[0]
+            print(f"[Gemini] 使用備用模型: {model}")
+            return model
+            
+    except Exception as e:
+        print(f"[Gemini] 模型選擇失敗: {e}")
+    
+    return None
+
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
     if "image" not in request.files:
@@ -451,7 +501,7 @@ def analyze_image():
     data = img.read()
     mime = detect_mime_by_bytes(data)
     
-    # 🔥 v4.9.9 強化版指令（移除檢查清單，避免顯示給學生）
+    # 強化版指令
     instruction = """你是台灣數學老師安安，用繁體中文逐步講解這張圖片題。
 
 解題要求：
@@ -480,28 +530,31 @@ def analyze_image():
     res = None
     question_text = None
 
-    # 🔥 嘗試 1：使用 Gemini（免費）
-    try:
-        if google_api_key and genai:
-            # 🔥 修正：使用正確的 Gemini 模型名稱
-            model = genai.GenerativeModel("gemini-1.5-pro")
-            r = model.generate_content(
-                [instruction, {"mime_type": mime, "data": data}],
-                generation_config={
-                    "max_output_tokens": 2000,
-                    "temperature": 0.1
-                }
-            )
-            res = getattr(r, "text", None)
-            if res:
-                res = clean_latex_format(normalize_math_terms(res))
-                res = remove_internal_checklist(res)  # 🔥 清理檢查清單
-                print(f"[Gemini] ✅ 成功")
-                
-                # 提取題目文字
-                question_text = extract_question_text(res)
-    except Exception as e:
-        print(f"[Gemini] ❌ {e}")
+    # 🔥 嘗試 1：使用 Gemini（免費且效果好）
+    if google_api_key and genai:
+        try:
+            model_name = get_best_gemini_model()
+            if model_name:
+                model = genai.GenerativeModel(model_name)
+                r = model.generate_content(
+                    [instruction, {"mime_type": mime, "data": data}],
+                    generation_config={
+                        "max_output_tokens": 2000,
+                        "temperature": 0.1
+                    }
+                )
+                res = getattr(r, "text", None)
+                if res:
+                    res = clean_latex_format(normalize_math_terms(res))
+                    res = remove_internal_checklist(res)
+                    print(f"[Gemini] ✅ 成功")
+                    
+                    # 提取題目文字
+                    question_text = extract_question_text(res)
+            else:
+                print(f"[Gemini] ⚠️ 無可用模型")
+        except Exception as e:
+            print(f"[Gemini] ❌ {e}")
 
     # 🔥 嘗試 2：如果 Gemini 失敗，使用 OpenAI
     if not res and openai_api_key:
@@ -522,7 +575,7 @@ def analyze_image():
             res = (data_json.get("choices",[{}])[0].get("message",{}) or {}).get("content","")
             if res:
                 res = clean_latex_format(normalize_math_terms(res))
-                res = remove_internal_checklist(res)  # 🔥 清理檢查清單
+                res = remove_internal_checklist(res)
                 print(f"[OpenAI-image] ✅ 成功")
                 
                 # 提取題目文字
