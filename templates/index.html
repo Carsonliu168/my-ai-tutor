@@ -76,7 +76,7 @@
 
     footer { text-align:center; margin:18px 0 28px; color:#777; font-size:13px; }
     
-    /* 手機版優化 - 修正公式溢出問題 */
+    /* 手機版優化 */
     @media (max-width: 600px) {
       .message { 
         padding: 10px 12px;
@@ -132,29 +132,38 @@
   <footer>© 2025 WeShareAI 教育服務｜安安數學助教系統</footer>
 
   <script>
-    // ===================================
-    // 核心函數：保護公式 → Marked → 還原
-    // ===================================
+    // ============================================================
+    // 🔥 專家級解決方案：使用 HTML 註釋作為 placeholder
+    // 核心原理：HTML 註釋不會被 Markdown 處理，確保安全
+    // ============================================================
     
     let mathCache = [];
     
-    // 🔥 修正版：提取並保護數學公式
+    // 保護數學公式：使用 HTML 註釋格式的 placeholder
     function protectMath(text) {
       mathCache = [];
       let index = 0;
       
-      // 先保護 $$...$$ 區塊公式（必須先處理，避免被行內公式誤判）
+      // 1. 先保護 $$...$$ 區塊公式
       text = text.replace(/\$\$([\s\S]+?)\$\$/g, function(match) {
-        const placeholder = `___MATH_BLOCK_${index}___`;
-        mathCache.push({type: 'block', content: match, placeholder});
+        const placeholder = `<!--MATH-BLOCK-${index}-->`;
+        mathCache.push({
+          content: match,
+          placeholder: placeholder,
+          type: 'block'
+        });
         index++;
         return placeholder;
       });
       
-      // 再保護 $...$ 行內公式（改進：確保不跨行）
+      // 2. 再保護 $...$ 行內公式
       text = text.replace(/\$([^\$\n]+?)\$/g, function(match) {
-        const placeholder = `___MATH_INLINE_${index}___`;
-        mathCache.push({type: 'inline', content: match, placeholder});
+        const placeholder = `<!--MATH-INLINE-${index}-->`;
+        mathCache.push({
+          content: match,
+          placeholder: placeholder,
+          type: 'inline'
+        });
         index++;
         return placeholder;
       });
@@ -162,11 +171,13 @@
       return text;
     }
     
-    // 還原數學公式
+    // 還原數學公式：從 HTML 註釋還原回數學公式
     function restoreMath(html) {
       mathCache.forEach(item => {
-        // 使用 split + join 替換（更安全）
-        html = html.split(item.placeholder).join(item.content);
+        // 使用全局替換，確保所有 placeholder 都被替換
+        while (html.indexOf(item.placeholder) !== -1) {
+          html = html.replace(item.placeholder, item.content);
+        }
       });
       return html;
     }
@@ -182,21 +193,31 @@
       const rawText = element.dataset.raw;
       if (!rawText || element.dataset.rendered) return;
       
-      // 1. 保護數學公式
-      const protected = protectMath(rawText);
-      
-      // 2. Marked 渲染 Markdown
-      const html = marked.parse(protected);
-      
-      // 3. 還原數學公式
-      const restored = restoreMath(html);
-      
-      element.innerHTML = restored;
-      element.dataset.rendered = "true";
+      try {
+        // 步驟 1: 保護數學公式
+        const protected = protectMath(rawText);
+        
+        // 步驟 2: Marked 渲染 Markdown
+        let html = marked.parse(protected);
+        
+        // 步驟 3: 還原數學公式
+        html = restoreMath(html);
+        
+        // 步驟 4: 寫入 DOM
+        element.innerHTML = html;
+        element.dataset.rendered = "true";
+        
+      } catch (error) {
+        console.error('渲染錯誤:', error);
+        // 降級處理：直接顯示原始文本
+        element.innerHTML = rawText.replace(/\n/g, '<br>');
+        element.dataset.rendered = "true";
+      }
     }
 
-    // 渲染所有訊息
+    // 渲染所有訊息並觸發 MathJax
     function renderAllMessages() {
+      // 渲染 Markdown
       document.querySelectorAll(".markdown-content").forEach(renderMessage);
       
       // 渲染數學公式
@@ -214,14 +235,15 @@
       setTimeout(renderAllMessages, 200);
     }
 
-    function clearChat() { window.location.href="/clear"; }
+    function clearChat() { 
+      window.location.href="/clear"; 
+    }
 
     // 圖片預覽
     function previewImage(e) {
       const file = e.target.files[0];
       const preview = document.getElementById("preview");
       if (file) {
-        // 檢查檔案大小（限制 5MB）
         if (file.size > 5 * 1024 * 1024) {
           alert("圖片檔案太大！請上傳小於 5MB 的圖片");
           e.target.value = "";
@@ -243,13 +265,11 @@
       
       s.innerText = "";
 
-      // 使用者訊息
       const userMsg = document.createElement("div");
       userMsg.className = "message user";
       userMsg.textContent = "📷 你上傳了一張圖片題";
       chat.appendChild(userMsg);
 
-      // 安安思考中
       const botMsg = document.createElement("div");
       botMsg.className = "message assistant";
       botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>⏳ 思考中...🧮";
@@ -260,7 +280,6 @@
         const r = await fetch("/analyze_image", { method: "POST", body: fd });
         const data = await r.json();
 
-        // 更新內容
         const contentSpan = document.createElement("span");
         contentSpan.className = "markdown-content";
         contentSpan.dataset.raw = data.result || "圖片解析失敗";
@@ -268,7 +287,6 @@
         botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>";
         botMsg.appendChild(contentSpan);
 
-        // 渲染
         renderMessage(contentSpan);
         if (window.MathJax && window.MathJax.typesetPromise) {
           MathJax.typesetPromise([botMsg]).catch((err) => console.log('MathJax error:', err));
@@ -324,7 +342,7 @@
         
         chat.scrollTop = chat.scrollHeight;
       } catch (e) {
-        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌回饋傳送失敗，稍後再試";
+        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌ 回饋傳送失敗，稍後再試";
         console.error("回饋錯誤:", e);
       }
     }
