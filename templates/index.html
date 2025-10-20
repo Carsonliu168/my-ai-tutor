@@ -138,22 +138,22 @@
     
     let mathCache = [];
     
-    // 提取並保護數學公式
+    // 🔥 修正版：提取並保護數學公式
     function protectMath(text) {
       mathCache = [];
       let index = 0;
       
-      // 保護 $$...$$ 區塊公式
+      // 先保護 $$...$$ 區塊公式（必須先處理，避免被行內公式誤判）
       text = text.replace(/\$\$([\s\S]+?)\$\$/g, function(match) {
-        const placeholder = `MATH_BLOCK_${index}`;
+        const placeholder = `___MATH_BLOCK_${index}___`;
         mathCache.push({type: 'block', content: match, placeholder});
         index++;
         return placeholder;
       });
       
-      // 保護 $...$ 行內公式
+      // 再保護 $...$ 行內公式（改進：確保不跨行）
       text = text.replace(/\$([^\$\n]+?)\$/g, function(match) {
-        const placeholder = `MATH_INLINE_${index}`;
+        const placeholder = `___MATH_INLINE_${index}___`;
         mathCache.push({type: 'inline', content: match, placeholder});
         index++;
         return placeholder;
@@ -165,7 +165,8 @@
     // 還原數學公式
     function restoreMath(html) {
       mathCache.forEach(item => {
-        html = html.replace(item.placeholder, item.content);
+        // 使用 split + join 替換（更安全）
+        html = html.split(item.placeholder).join(item.content);
       });
       return html;
     }
@@ -323,7 +324,7 @@
         
         chat.scrollTop = chat.scrollHeight;
       } catch (e) {
-        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌ 回饋傳送失敗，稍後再試";
+        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌回饋傳送失敗，稍後再試";
         console.error("回饋錯誤:", e);
       }
     }
