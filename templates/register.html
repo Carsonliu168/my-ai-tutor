@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>登入 - 數學小老師安安</title>
+    <title>註冊 - 數學小老師安安</title>
     <style>
         body { 
             font-family: "Microsoft JhengHei", Arial, sans-serif; 
@@ -53,6 +53,7 @@
         }
         
         input[type="text"],
+        input[type="email"],
         input[type="password"] {
             width: 100%;
             padding: 12px 15px;
@@ -64,6 +65,7 @@
         }
         
         input[type="text"]:focus,
+        input[type="email"]:focus,
         input[type="password"]:focus {
             border-color: #667eea;
             outline: none;
@@ -110,13 +112,25 @@
             border-left: 4px solid #d63384;
         }
         
-        .demo-note {
-            background: #e7f3ff;
-            padding: 15px;
+        .features {
+            background: #f8f9fa;
+            padding: 20px;
             border-radius: 10px;
-            margin-top: 20px;
-            text-align: center;
-            border-left: 4px solid #0078d7;
+            margin-top: 30px;
+        }
+        
+        .features h3 {
+            color: #333;
+            margin-top: 0;
+        }
+        
+        .features ul {
+            padding-left: 20px;
+            color: #666;
+        }
+        
+        .features li {
+            margin-bottom: 8px;
         }
     </style>
 </head>
@@ -124,7 +138,7 @@
     <div class="container">
         <div class="logo">
             <span class="icon">🧮</span>
-            <h1>歡迎回來！</h1>
+            <h1>註冊安安帳號</h1>
         </div>
 
         {% if error %}
@@ -140,22 +154,30 @@
             </div>
             
             <div class="form-group">
-                <label for="password">密碼</label>
-                <input type="password" id="password" name="password" required placeholder="請輸入密碼">
+                <label for="email">電子郵件</label>
+                <input type="email" id="email" name="email" required placeholder="請輸入電子郵件">
             </div>
             
-            <button type="submit" class="btn">登入帳號</button>
+            <div class="form-group">
+                <label for="password">密碼</label>
+                <input type="password" id="password" name="password" required placeholder="請輸入密碼（至少6位）">
+            </div>
+            
+            <button type="submit" class="btn">註冊帳號</button>
         </form>
         
         <div class="links">
-            <p>還沒有帳號？ <a href="/register">立即註冊</a></p>
-            <p><a href="/">← 返回首頁</a></p>
+            <p>已經有帳號？ <a href="/login">立即登入</a></p>
         </div>
         
-        <div class="demo-note">
-            <strong>💡 提示：</strong><br>
-            完成登入後，系統將引導你進行<br>
-            「大腦探險家」學習風格分析問卷
+        <div class="features">
+            <h3>🎯 註冊後你可以：</h3>
+            <ul>
+                <li>解鎖個人化學習風格分析</li>
+                <li>獲得專屬的學習策略建議</li>
+                <li>保存你的學習進度和對話紀錄</li>
+                <li>體驗更智慧的數學學習陪伴</li>
+            </ul>
         </div>
     </div>
 </body>

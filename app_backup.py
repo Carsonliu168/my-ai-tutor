@@ -1,12 +1,11 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v5.0.0：新增會員系統與認知問卷
+# v4.9.10：修正 Gemini API 模型名稱問題
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 import os, json, base64, requests, sqlite3, uuid, re, imghdr
 from datetime import datetime, timedelta
-from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
@@ -16,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 session_lifetime_days = int(os.getenv("SESSION_LIFETIME_DAYS", "30"))
 app.permanent_session_lifetime = timedelta(days=session_lifetime_days)
 DEMO_MODE = os.getenv("DEMO_MODE", "False").lower() == "true"
-APP_VERSION = "v5.0.0"
+APP_VERSION = "v4.9.10"
 
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -47,289 +46,7 @@ except Exception as e:
     print(f"⚠️ Gemini 初始化失敗: {e}")
     genai = None
 
-# ================================
-# 🗄️ 資料庫初始化
-# ================================
-
-DB_PATH = "data/anan.db"
-os.makedirs("data", exist_ok=True)
-
-def get_conn(): 
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
-
-def init_db():
-    conn = get_conn()
-    c = conn.cursor()
-    
-    # 原有的 records 表
-    c.execute("""CREATE TABLE IF NOT EXISTS records(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT, question TEXT, topic TEXT,
-        is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-    
-    # 🆕 新增：用戶表
-    c.execute("""CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        verified BOOLEAN DEFAULT 0,
-        verification_token TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    # 🆕 新增：認知畫像表（問卷結果）
-    c.execute("""CREATE TABLE IF NOT EXISTS cognitive_profiles(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        profile_type TEXT NOT NULL,
-        logic_score INTEGER,
-        intuition_score INTEGER,
-        learning_tips TEXT,
-        completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )""")
-    
-    conn.commit()
-    conn.close()
-    print(f"✅ [安安] 資料庫就緒 ({APP_VERSION})")
-
-init_db()
-
-# ================================
-# 🧠 認知問卷系統
-# ================================
-
-@app.route("/questionnaire")
-def questionnaire():
-    """顯示大腦探險家問卷頁面"""
-    if "user_id" not in session:
-        return redirect(url_for("login"))
-    return render_template("questionnaire.html")
-
-@app.route("/submit_questionnaire", methods=["POST"])
-def submit_questionnaire():
-    """處理問卷提交並計算認知類型"""
-    try:
-        if "user_id" not in session:
-            return jsonify({"error": "請先登入"}), 401
-            
-        data = request.get_json()
-        answers = data.get("answers", [])
-        
-        if len(answers) != 7:
-            return jsonify({"error": "需要完成所有7個任務"}), 400
-        
-        # 計算認知類型
-        logic_score = 0
-        intuition_score = 0
-        
-        for answer in answers:
-            if answer.upper() == 'A':
-                logic_score += 1
-            elif answer.upper() == 'B':
-                intuition_score += 1
-        
-        # 判斷認知類型
-        total_questions = len(answers)
-        logic_percentage = (logic_score / total_questions) * 100
-        
-        if logic_percentage >= 70:
-            profile_type = "邏輯戰略家"
-            description = "你的大腦像一位精明的指揮官！善於分析、規劃，喜歡有條理地解決問題。在學習數學時，你會先觀察規律、列出步驟，一步步向前推進。"
-            learning_tips = [
-                "多練習有明確步驟的題目，強化你的邏輯優勢",
-                "嘗試把複雜問題拆解成小任務，各個擊破",
-                "使用條列式筆記，讓思考更有結構"
-            ]
-            color_scheme = "理性藍"
-        elif logic_percentage <= 30:
-            profile_type = "創意視覺家" 
-            description = "你的大腦像一位充滿想像力的藝術家！擅長看到整體圖像，直覺敏銳。在學習時，你喜歡先掌握全局概念，再用創意方式解決問題。"
-            learning_tips = [
-                "多畫圖、使用思維導圖來幫助理解",
-                "把數學問題想像成生活中的故事或遊戲",
-                "嘗試用不同顏色標記不同概念"
-            ]
-            color_scheme = "創意橙"
-        else:
-            profile_type = "平衡大師"
-            description = "你的大腦像一位全能選手！能靈活運用邏輯和直覺，在不同情境下選擇最合適的策略。這種平衡能力讓你能適應各種學習挑戰。"
-            learning_tips = [
-                "交替使用分析法和圖像法來解題",
-                "根據題目類型選擇最適合的思考方式", 
-                "保持開放心態，繼續發展雙重優勢"
-            ]
-            color_scheme = "平衡綠"
-        
-        # 🆕 將結果存入資料庫
-        user_id = session["user_id"]
-        conn = get_conn()
-        c = conn.cursor()
-        
-        # 先刪除舊的問卷結果（如果有的話）
-        c.execute("DELETE FROM cognitive_profiles WHERE user_id = ?", (user_id,))
-        
-        # 插入新的問卷結果
-        c.execute("""
-            INSERT INTO cognitive_profiles (user_id, profile_type, logic_score, intuition_score, learning_tips)
-            VALUES (?, ?, ?, ?, ?)
-        """, (user_id, profile_type, logic_score, intuition_score, json.dumps(learning_tips, ensure_ascii=False)))
-        
-        conn.commit()
-        conn.close()
-        
-        # 將結果存入 session
-        session["cognitive_profile"] = {
-            "type": profile_type,
-            "logic_score": logic_score,
-            "intuition_score": intuition_score,
-            "description": description,
-            "learning_tips": learning_tips,
-            "color_scheme": color_scheme
-        }
-        
-        result = {
-            "success": True,
-            "profile": session["cognitive_profile"]
-        }
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        print(f"[問卷系統] 錯誤: {e}")
-        return jsonify({"error": "系統處理問卷時發生錯誤"}), 500
-
-@app.route("/questionnaire_result")
-def questionnaire_result():
-    """顯示問卷結果頁面"""
-    if "user_id" not in session:
-        return redirect(url_for("login"))
-        
-    profile = session.get("cognitive_profile")
-    if not profile:
-        return redirect(url_for("questionnaire"))
-        
-    return render_template("questionnaire_result.html", profile=profile)
-
-# ================================
-# 🔐 會員系統
-# ================================
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    """用戶註冊"""
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        
-        if not username or not email or not password:
-            return render_template("register.html", error="請填寫所有欄位")
-        
-        if len(password) < 6:
-            return render_template("register.html", error="密碼至少需要6個字符")
-        
-        try:
-            conn = get_conn()
-            c = conn.cursor()
-            
-            # 檢查用戶名和郵箱是否已存在
-            c.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
-            if c.fetchone():
-                conn.close()
-                return render_template("register.html", error="用戶名或郵箱已被使用")
-            
-            # 創建新用戶
-            password_hash = generate_password_hash(password)
-            verification_token = str(uuid.uuid4())
-            
-            c.execute("""
-                INSERT INTO users (username, email, password_hash, verification_token)
-                VALUES (?, ?, ?, ?)
-            """, (username, email, password_hash, verification_token))
-            
-            user_id = c.lastrowid
-            conn.commit()
-            conn.close()
-            
-            # 自動登入
-            session["user_id"] = user_id
-            session["username"] = username
-            session["cognitive_profile"] = None
-            
-            # 重定向到問卷頁面
-            return redirect(url_for("questionnaire"))
-            
-        except Exception as e:
-            print(f"[註冊錯誤] {e}")
-            return render_template("register.html", error="註冊失敗，請稍後再試")
-    
-    return render_template("register.html")
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    """用戶登入"""
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        
-        if not username or not password:
-            return render_template("login.html", error="請填寫所有欄位")
-        
-        try:
-            conn = get_conn()
-            c = conn.cursor()
-            
-            # 查找用戶
-            c.execute("SELECT id, username, password_hash FROM users WHERE username = ?", (username,))
-            user = c.fetchone()
-            conn.close()
-            
-            if user and check_password_hash(user[2], password):
-                # 登入成功
-                session["user_id"] = user[0]
-                session["username"] = user[1]
-                
-                # 檢查是否有認知畫像
-                conn = get_conn()
-                c = conn.cursor()
-                c.execute("SELECT profile_type, logic_score, intuition_score, learning_tips FROM cognitive_profiles WHERE user_id = ?", (user[0],))
-                profile = c.fetchone()
-                conn.close()
-                
-                if profile:
-                    session["cognitive_profile"] = {
-                        "type": profile[0],
-                        "logic_score": profile[1],
-                        "intuition_score": profile[2],
-                        "learning_tips": json.loads(profile[3]) if profile[3] else []
-                    }
-                else:
-                    session["cognitive_profile"] = None
-                
-                return redirect(url_for("home"))
-            else:
-                return render_template("login.html", error="用戶名或密碼錯誤")
-                
-        except Exception as e:
-            print(f"[登入錯誤] {e}")
-            return render_template("login.html", error="登入失敗，請稍後再試")
-    
-    return render_template("login.html")
-
-@app.route("/logout")
-def logout():
-    """用戶登出"""
-    session.clear()
-    return redirect(url_for("home"))
-
-# ================================
-# 🧮 原有的數學功能（保持不變）
-# ================================
-
 def normalize_math_terms(s):
-    # ...（保持原有的 normalize_math_terms 函數不變）...
     if not s:
         return s
     # 數學術語轉換
@@ -371,7 +88,6 @@ def normalize_math_terms(s):
     return s
 
 def clean_latex_format(s):
-    # ...（保持原有的 clean_latex_format 函數不變）...
     """
     清理和標準化 LaTeX 格式
     v4.9.9: 完整處理所有括號格式
@@ -688,6 +404,20 @@ def remove_internal_checklist(text):
     
     return text.strip()
 
+DB_PATH = "data/anan.db"
+os.makedirs("data", exist_ok=True)
+def get_conn(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+def init_db():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT, question TEXT, topic TEXT,
+        is_correct INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    conn.commit(); conn.close()
+    print(f"✅ [安安] 資料庫就緒 ({APP_VERSION})")
+init_db()
+
 TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
 
 def next_help_response(counter_name):
@@ -892,13 +622,10 @@ def analyze_image():
 
 @app.before_request
 def ensure_user():
-    # 確保有基本的會話數據
     if "user_id" not in session:
-        # 未登入用戶使用臨時會話
-        session.permanent = False
-    else:
-        # 已登入用戶使用持久會話
-        session.permanent = True
+        session["user_id"]=str(uuid.uuid4())
+    # 🔥 強制設定為臨時 Session（關閉瀏覽器即清空）
+    session.permanent = False
 
 @app.route("/", methods=["GET","POST"])
 def home():
@@ -906,7 +633,7 @@ def home():
     if request.method=="POST":
         msg = (request.form.get("message","") or "").strip()
         if not msg:
-            return render_template("index.html",conversation=convo, username=session.get("username"))
+            return render_template("index.html",conversation=convo)
 
         if is_pure_help_phrase(msg):
             key = "image_confused_count" if session.get("guided_topic")=="image_explain" else "confused_count"
@@ -916,7 +643,7 @@ def home():
             session["conversation"] = convo
             session.modified = True
             trim_conversation_history()
-            return render_template("index.html",conversation=convo, username=session.get("username"))
+            return render_template("index.html",conversation=convo)
 
         session["confused_count"] = 0
         session["image_confused_count"] = 0
@@ -930,7 +657,7 @@ def home():
         session.modified = True
         trim_conversation_history()
 
-    return render_template("index.html", conversation=convo, username=session.get("username"))
+    return render_template("index.html", conversation=convo)
 
 @app.route("/feedback", methods=["POST"])
 def feedback():
