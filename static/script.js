@@ -9,15 +9,15 @@ function appendMessage(role, content) {
   }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
-  
+
   if (window.MathJax) {
     if (MathJax.typesetPromise) {
-      MathJax.typesetPromise([div]).catch((err) => console.log('MathJax error:', err));
+      MathJax.typesetPromise([div]).catch((err) => console.log("MathJax error:", err));
     }
   } else {
     setTimeout(() => {
       if (window.MathJax && MathJax.typesetPromise) {
-        MathJax.typesetPromise([div]).catch((err) => console.log('MathJax error:', err));
+        MathJax.typesetPromise([div]).catch((err) => console.log("MathJax error:", err));
       }
     }, 1000);
   }
@@ -30,32 +30,38 @@ function sendMessage(preset) {
   appendMessage("student", text);
   if (!preset) input.value = "";
   appendMessage("anan", "安安正在思考中...");
+
   fetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: text })
   })
-    .then(r => {
+    .then((r) => {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     })
-    .then(data => {
+    .then((data) => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
-      
+
       try {
-        last.innerHTML = marked.parse(data.reply || "(沒有回覆內容)");
+        let reply = data.reply || "(沒有回覆內容)";
+
+        // ✅ 自動把中括號裡的 LaTeX 語法包進 $...$，讓 MathJax 可辨識
+        reply = reply.replace(/\[([^\]]+)\]/g, "$$$1$$");
+
+        last.innerHTML = marked.parse(reply);
       } catch (e) {
         last.textContent = data.reply || "(沒有回覆內容)";
       }
-      
+
       setTimeout(() => {
         if (window.MathJax && MathJax.typesetPromise) {
-          MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+          MathJax.typesetPromise([last]).catch((err) => console.log("MathJax error:", err));
         }
       }, 300);
     })
-    .catch(err => {
+    .catch((err) => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
       last.textContent = "系統忙碌，請稍後再試。";
@@ -68,32 +74,36 @@ function uploadImage(inputEl) {
   if (!f) return;
   appendMessage("student", "(已選擇圖片：" + f.name + ")");
   appendMessage("anan", "安安正在辨識圖片與文字...");
+
   const fd = new FormData();
   fd.append("file", f);
+
   fetch("/upload", { method: "POST", body: fd })
-    .then(r => {
+    .then((r) => {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     })
-    .then(data => {
+    .then((data) => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
-      
+
       try {
-        last.innerHTML = marked.parse(data.reply || "(沒有回覆內容)");
+        let reply = data.reply || "(沒有回覆內容)";
+        reply = reply.replace(/\[([^\]]+)\]/g, "$$$1$$"); // ✅ 同步處理圖片回覆的公式
+        last.innerHTML = marked.parse(reply);
       } catch (e) {
         last.textContent = data.reply || "(沒有回覆內容)";
       }
-      
+
       setTimeout(() => {
         if (window.MathJax && MathJax.typesetPromise) {
-          MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+          MathJax.typesetPromise([last]).catch((err) => console.log("MathJax error:", err));
         }
       }, 300);
-      
+
       inputEl.value = "";
     })
-    .catch(err => {
+    .catch((err) => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
       last.textContent = "圖片上傳/辨識失敗，請稍後再試。";
