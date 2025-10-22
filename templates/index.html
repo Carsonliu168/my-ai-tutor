@@ -7,19 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   
   <script>
-    window.MathJax = {
-      tex: {
-        inlineMath: [['$', '$'], ['\\(', '\\)']],
-        displayMath: [['$$', '$$'], ['\\[', '\\]']],
-        processEscapes: true
-      },
-      options: {
-        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
-      }
-    };
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  };
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   
-  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script defer src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
@@ -47,7 +43,7 @@
     </div>
   </main>
   <footer>
-    <div id="version-tag">v5.0.7-fix</div>
+    <div id="version-tag">v5.0.9-stable</div>
     <a href="/logout" class="logout-btn">登出</a>
   </footer>
 </body>
