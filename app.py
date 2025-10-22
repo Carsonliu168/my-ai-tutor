@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v5.0.3-stable（修復 Gemini OCR 模型名稱問題）
+# v5.0.4-stable（OCR 用 Gemini 優先，OpenAI Vision 備援）
 # ✅ 邏輯已補齊：/chat（解題）、/upload（OCR）、/clear（清除對話）
 # ================================
 
@@ -104,13 +104,35 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒（v5.0.3-stable）")
+    print("✅ [安安] 資料庫就緒（v5.0.4-stable）")
 init_db()
 
 # -------------------------------
-# 🔧 小工具：呼叫 LLM（優先 OPENAI → 退而用 Gemini → 再退 DeepSeek）
+# 🔧 小工具：文字解題（優先 DeepSeek → OpenAI → Gemini）
 # -------------------------------
+def solve_with_deepseek(prompt: str) -> str:
+    """使用 DeepSeek 解題"""
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com"
+        )
+        sys = ("你是小學數學家教「安安」。請用分步驟、淺白口吻解題，"
+               "必要時用 Latex（$...$ 或 $$...$$）書寫計算式；先引導思考，再給答案。")
+        rsp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role":"system","content":sys},
+                      {"role":"user","content":prompt}],
+            temperature=0.2
+        )
+        return rsp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"⚠️ DeepSeek 不可用：{e}")
+        return None
+
 def solve_with_openai(prompt: str) -> str:
+    """使用 OpenAI 解題"""
     try:
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -124,9 +146,11 @@ def solve_with_openai(prompt: str) -> str:
         )
         return rsp.choices[0].message.content.strip()
     except Exception as e:
-        return f"（OpenAI 暫時不可用：{e}）"
+        print(f"⚠️ OpenAI 不可用：{e}")
+        return None
 
 def solve_with_gemini(prompt: str) -> str:
+    """使用 Gemini 解題"""
     try:
         import google.generativeai as genai
         genai.configure(api_key=GOOGLE_API_KEY)
@@ -135,75 +159,53 @@ def solve_with_gemini(prompt: str) -> str:
         rsp = model.generate_content([sys, prompt])
         return rsp.text.strip()
     except Exception as e:
-        return f"（Gemini 暫時不可用：{e}）"
-
-def solve_with_deepseek(prompt: str) -> str:
-    try:
-        # 若你原本用 deepseek-sdk，可替換為既有寫法
-        # 這裡用簡單的回覆保底，避免整體崩潰
-        return "（DeepSeek Fallback）目前以簡化模式回覆：\n" + prompt
-    except Exception as e:
-        return f"（DeepSeek 暫時不可用：{e}）"
+        print(f"⚠️ Gemini 不可用：{e}")
+        return None
 
 def solve_math(prompt: str) -> str:
-    """優先用 OPENAI，其次 GEMINI，最後 DEEPSEEK；並做一道保底『口算』規則。"""
-    # 特例：若是很簡單的整除，先直接算出給學生一個直觀答案（避免雲端偶發延遲）
-    m = re.match(r'^\s*(\d+)\s*[\/÷]\s*(\d+)\s*$', prompt)
+    """文字解題：優先 DeepSeek → OpenAI → Gemini"""
+    # 簡單計算保底
+    m = re.match(r'^\s*(\d+)\s*[×x*]\s*(\d+)\s*=?\s*$', prompt, re.IGNORECASE)
     if m:
         a, b = int(m.group(1)), int(m.group(2))
-        if b != 0:
-            q = a / b
-            return f"先用整數除法：{a} ÷ {b} = {q}\n因此每期需付 **{q:.2f} 元**。"
-    # 一般路徑
+        result = a * b
+        return f"好的，我們來算：{a} × {b} = **{result}**\n\n是不是很簡單呢？ 😊"
+    
+    # 依序嘗試 DeepSeek → OpenAI → Gemini
+    if DEEPSEEK_API_KEY:
+        ans = solve_with_deepseek(prompt)
+        if ans:
+            print("✅ 使用 DeepSeek 解題")
+            return ans
+    
     if OPENAI_API_KEY:
         ans = solve_with_openai(prompt)
-        if "不可用" not in ans:
+        if ans:
+            print("✅ 使用 OpenAI 解題（DeepSeek 備援）")
             return ans
+    
     if GOOGLE_API_KEY:
         ans = solve_with_gemini(prompt)
-        if "不可用" not in ans:
+        if ans:
+            print("✅ 使用 Gemini 解題（最後備援）")
             return ans
-    # 最後保底
-    return solve_with_deepseek(prompt)
+    
+    return "（抱歉，所有 AI 服務暫時不可用，請稍後再試）"
 
 # -------------------------------
-# 🔧 小工具：圖片 OCR with Gemini（自動偵測可用模型）
+# 🔧 小工具：圖片 OCR（優先 Gemini → OpenAI Vision 備援）
 # -------------------------------
 def ocr_with_gemini(file_storage) -> str:
+    """使用 Gemini 做 OCR（優先）"""
     if not GOOGLE_API_KEY:
-        return "（OCR 需要 GOOGLE_API_KEY）"
+        return None
     try:
         import google.generativeai as genai
         from PIL import Image
         import io
         
         genai.configure(api_key=GOOGLE_API_KEY)
-        
-        # 嘗試多個可能的模型名稱（按優先順序）
-        model_names = [
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-pro-vision',
-            'gemini-1.5-flash-001',
-            'gemini-1.5-flash-002'
-        ]
-        
-        model = None
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                model = genai.GenerativeModel(model_name)
-                # 嘗試一個簡單的測試看看模型是否可用
-                print(f"✅ 成功載入模型：{model_name}")
-                break
-            except Exception as e:
-                last_error = e
-                print(f"⚠️ 模型 {model_name} 不可用：{e}")
-                continue
-        
-        if not model:
-            return f"（找不到可用的 Gemini 視覺模型，最後錯誤：{last_error}）"
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         # 讀取圖片
         image_data = file_storage.read()
@@ -212,12 +214,56 @@ def ocr_with_gemini(file_storage) -> str:
         prompt = ("請先做 OCR 擷取題目文字，再用國小程度一步步講解解法，"
                   "最後給出答案（若有單位要寫上）。可以用 Latex。")
         
-        # 直接傳入 PIL Image 物件
         rsp = model.generate_content([prompt, image])
+        print("✅ 使用 Gemini OCR")
         return rsp.text.strip()
         
     except Exception as e:
-        return f"（OCR 暫時不可用：{e}）"
+        print(f"⚠️ Gemini OCR 失敗：{e}")
+        return None
+
+def ocr_with_openai(file_storage) -> str:
+    """使用 OpenAI Vision 做 OCR（備援）"""
+    if not OPENAI_API_KEY:
+        return None
+    try:
+        from openai import OpenAI
+        import base64
+        
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        # 讀取圖片並轉成 base64
+        image_data = file_storage.read()
+        base64_image = base64.b64encode(image_data).decode('utf-8')
+        
+        prompt = ("請先做 OCR 擷取題目文字，再用國小程度一步步講解解法，"
+                  "最後給出答案（若有單位要寫上）。可以用 Latex。")
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000
+        )
+        
+        print("✅ 使用 OpenAI Vision OCR（Gemini 備援）")
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        print(f"⚠️ OpenAI Vision OCR 失敗：{e}")
+        return None
 
 # -------------------------------
 # ✅ 路由
@@ -296,12 +342,22 @@ def upload():
     if not file or file.filename == '':
         return jsonify({"reply":"檔案名稱是空的"}), 400
 
+    # 優先用 Gemini，失敗才用 OpenAI Vision
     reply = ocr_with_gemini(file)
+    
+    if not reply:
+        # Gemini 失敗，重置檔案指標後用 OpenAI
+        file.seek(0)
+        reply = ocr_with_openai(file)
+    
+    if not reply:
+        reply = "（抱歉，圖片辨識服務暫時不可用，請稍後再試）"
+    
     return jsonify({"reply": reply}), 200
 
 @app.route('/clear')
 def clear():
-    # 清除當前使用者的紀錄（僅作示範，可改為清除 session）
+    # 清除當前使用者的紀錄
     try:
         conn = sqlite3.connect("data/anan.db")
         c = conn.cursor()
@@ -314,7 +370,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.3-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.4-stable"})
 
 @app.route('/smoke')
 def smoke():
@@ -326,3 +382,17 @@ def smoke():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
+```
+
+---
+
+## ✅ 修正重點
+
+### **文字解題（`/chat`）**
+```
+優先順序：DeepSeek → OpenAI → Gemini
+```
+
+### **圖片 OCR（`/upload`）**
+```
+優先順序：Gemini → OpenAI Vision
