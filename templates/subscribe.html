@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>訂閱確認 - 數學小老師安安</title>
+  <style>
+    body { font-family:"Microsoft JhengHei", Arial, sans-serif; background:#f6f9ff; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .card { background:#fff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.08); padding:28px; width:92%; max-width:520px; }
+    h1 { margin:0 0 8px; font-size:24px; color:#333; }
+    p { color:#555; line-height:1.7; }
+    .row { display:flex; justify-content:space-between; margin:12px 0; }
+    .price { font-weight:700; font-size:22px; color:#5b6cff; }
+    .btn { display:inline-block; padding:12px 22px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; border-radius:10px; text-decoration:none; font-weight:700; }
+    .btn:hover { opacity:.92; }
+    .muted { color:#777; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>訂閱確認</h1>
+    <p>嗨，{{ username }}！你選擇的方案：</p>
+    <div class="row"><span>方案</span><strong>{{ plan.title }}</strong></div>
+    <div class="row"><span>價格</span><span class="price">NT${{ plan.price }}/月</span></div>
+    <p class="muted">（此頁為暫存頁。未來會在這裡串接綠界 ECPay，建立訂單後導向付款頁。）</p>
+    <div style="margin-top:16px; display:flex; gap:12px;">
+      <a class="btn" href="/">返回主頁</a>
+      <a class="btn" href="/questionnaire_result" style="background:#6c757d;">回到結果頁</a>
+    </div>
+  </div>
+</body>
+</html>

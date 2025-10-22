@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大腦探險家問卷 - 數學小老師安安</title>
+    <style>
+        body { 
+            font-family: "Microsoft JhengHei", Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0; 
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin: 0;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .quest-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: none;
+        }
+        
+        .quest-card.active {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .quest-title {
+            color: #333;
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .options {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .option-btn {
+            padding: 20px;
+            border: 3px solid #e1e5e9;
+            border-radius: 15px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+            font-size: 16px;
+        }
+        
+        .option-btn:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+        
+        .option-btn.selected {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: translateY(-2px);
+        }
+        
+        .option-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+        
+        .nav-btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .prev-btn {
+            background: #f8f9fa;
+            color: #333;
+        }
+        
+        .next-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .nav-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+        
+        .progress {
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            height: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            background: white;
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: white;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .welcome-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .welcome-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.3s ease;
+        }
+        
+        .start-btn:hover {
+            transform: translateY(-3px) scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 大腦探險家啟航任務</h1>
+            <p>探險家，歡迎登艦！傳說中有七顆「智慧水晶」散落在知識宇宙中，<br>每一顆都代表一種獨特的思考超能力。</p>
+        </div>
+
+        <!-- 歡迎卡片 -->
+        <div id="welcomeCard" class="welcome-card">
+            <div class="welcome-icon">🚀</div>
+            <h2>準備開始你的探險之旅！</h2>
+            <p>我們將透過7個有趣的任務，探索你的思考模式，找出你最閃亮的智慧水晶！</p>
+            <p><strong>每個任務請根據你的第一感覺選擇答案</strong></p>
+            <button class="start-btn" onclick="startQuestionnaire()">開始探險！</button>
+        </div>
+
+        <!-- 進度條 -->
+        <div id="progressSection" style="display: none;">
+            <div class="progress-text">任務進度: <span id="progressText">0/7</span></div>
+            <div class="progress">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+
+        <form id="questionnaireForm">
+            <!-- 任務1 -->
+            <div class="quest-card" id="quest1">
+                <div class="quest-title">🚀 任務一：解開古代迷宮石陣</div>
+                <p>你面前有一座古老的石陣迷宮，你會怎麼做？</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【策略家的藍圖】</div>
+                        先觀察整個迷宮的出口與入口，在腦中畫出一張整體地圖，再選擇一條看起來最有希望的路徑。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【分析師的羅盤】</div>
+                        從入口開始，遇到第一個岔路就做記號，一步一步、有條不紊地探索每一條可能的通道。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 任務2 -->
+            <div class="quest-card" id="quest2">
+                <div class="quest-title">🔧 任務二：組裝未知的星際設備</div>
+                <p>你收到一個來自外星的奇特設備零件箱，沒有說明書。你會？</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【工程師的思維】</div>
+                        按照零件編號和常見的組裝邏輯，先從基礎結構開始，一步步試著拼湊起來。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【創意師的想像】</div>
+                        先猜測這個設備可能是做什麼用的（例如：通信器或能量儀），然後根據這個整體想像，把零件分成幾大功能模組來組合。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 任務3 -->
+            <div class="quest-card" id="quest3">
+                <div class="quest-title">✨ 任務三：學習新的魔法咒語</div>
+                <p>要學習一個能讓物體漂浮的複雜咒語，你更喜歡哪種方式？</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【巫師的秘典】</div>
+                        先專注於每個音節的精確發音和手勢的細微角度，反覆練習每一個分解動作。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【先知的願景】</div>
+                        先觀看一段咒語成功施展的完整畫面，感受那股「漂浮感」，再嘗試模仿和重現那種整體的感覺。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 任務4 -->
+            <div class="quest-card" id="quest4">
+                <div class="quest-title">👥 任務四：規劃你的探險小隊</div>
+                <p>你需要組織一個小隊去完成一項大任務，你更看重：</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【指揮官的邏輯】</div>
+                        明確的任務分工表，每個人都清楚自己的每一步職責和匯報關係。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【心靈導師的直覺】</div>
+                        小隊成員之間良好的默契和整體的團隊氛圍，相信大家能隨機應變。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 任務5 -->
+            <div class="quest-card" id="quest5">
+                <div class="quest-title">📝 任務五：記錄你的探險日誌</div>
+                <p>在記錄你的探險經歷時，你傾向於：</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【記者的條理】</div>
+                        用清晰的文字，按照時間順序，條理分明地記錄下發生了什麼。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【畫家的寫生】</div>
+                        畫下關鍵場景的地圖、示意圖，並用一些簡單的圖標來輔助說明整個過程。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 任務6 -->
+            <div class="quest-card" id="quest6">
+                <div class="quest-title">🔍 任務六：破解古老的星圖密碼</div>
+                <p>面對一張佈滿神秘符號的星圖，你認為破解的關鍵在於：</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【密碼員的分析】</div>
+                        找出符號與符號之間的轉換規律和先後順序，建立一套解碼規則。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【天文學家的洞察】</div>
+                        將星圖整體旋轉或從遠處觀察，看看這些符號是否能組成一個你認識的星座或圖案。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 任務7 -->
+            <div class="quest-card" id="quest7">
+                <div class="quest-title">🧭 任務七：決定最終航向</div>
+                <p>作為船長，你將如何為飛船制定最終的航行路線？</p>
+                <div class="options">
+                    <button type="button" class="option-btn" data-value="A">
+                        <div class="option-title">【導航官的數據】</div>
+                        詳細分析每條路線的距離、風險和資源消耗，選擇數據上最優的那一條。
+                    </button>
+                    <button type="button" class="option-btn" data-value="B">
+                        <div class="option-title">【冒險家的心聲】</div>
+                        跟隨你的直覺，選擇那條你最感興趣、感覺最能發現新大陸的航線。
+                    </button>
+                </div>
+            </div>
+
+            <!-- 導航按鈕 -->
+            <div class="navigation" id="navigation" style="display: none;">
+                <button type="button" class="nav-btn prev-btn" id="prevBtn" onclick="prevQuest()" disabled>上一題</button>
+                <button type="button" class="nav-btn next-btn" id="nextBtn" onclick="nextQuest()">下一題</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let currentQuest = 0;
+        const totalQuests = 7;
+        const answers = new Array(totalQuests).fill(null);
+
+        function startQuestionnaire() {
+            document.getElementById('welcomeCard').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('navigation').style.display = 'flex';
+            showQuest(0);
+        }
+
+        function showQuest(index) {
+            // 隱藏所有題目
+            for (let i = 0; i < totalQuests; i++) {
+                document.getElementById(`quest${i + 1}`).classList.remove('active');
+            }
+            
+            // 顯示當前題目
+            document.getElementById(`quest${index + 1}`).classList.add('active');
+            
+            // 更新進度
+            updateProgress(index);
+            
+            // 更新導航按鈕
+            document.getElementById('prevBtn').disabled = index === 0;
+            
+            if (index === totalQuests - 1) {
+                document.getElementById('nextBtn').textContent = '完成問卷';
+            } else {
+                document.getElementById('nextBtn').textContent = '下一題';
+            }
+            
+            // 恢復已選擇的答案
+            if (answers[index] !== null) {
+                const selectedBtn = document.querySelector(`#quest${index + 1} .option-btn[data-value="${answers[index]}"]`);
+                if (selectedBtn) {
+                    selectOption(selectedBtn);
+                }
+            }
+        }
+
+        function updateProgress(index) {
+            const progress = ((index + 1) / totalQuests) * 100;
+            document.getElementById('progressBar').style.width = `${progress}%`;
+            document.getElementById('progressText').textContent = `${index + 1}/${totalQuests}`;
+        }
+
+        function selectOption(button) {
+            // 移除同題目其他選項的選中狀態
+            const questCard = button.closest('.quest-card');
+            questCard.querySelectorAll('.option-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            // 選中當前選項
+            button.classList.add('selected');
+            
+            // 保存答案
+            const questIndex = parseInt(questCard.id.replace('quest', '')) - 1;
+            answers[questIndex] = button.dataset.value;
+            
+            // 啟用下一題按鈕
+            document.getElementById('nextBtn').disabled = false;
+        }
+
+        function nextQuest() {
+            if (currentQuest < totalQuests - 1) {
+                currentQuest++;
+                showQuest(currentQuest);
+            } else {
+                submitQuestionnaire();
+            }
+        }
+
+        function prevQuest() {
+            if (currentQuest > 0) {
+                currentQuest--;
+                showQuest(currentQuest);
+            }
+        }
+
+        async function submitQuestionnaire() {
+            // 檢查是否所有題目都已回答
+            if (answers.some(answer => answer === null)) {
+                alert('請完成所有題目！');
+                return;
+            }
+
+            try {
+                const response = await fetch('/submit_questionnaire', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ answers: answers })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    window.location.href = '/questionnaire_result';
+                } else {
+                    alert('提交失敗：' + (data.error || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('提交問卷時發生錯誤，請稍後再試');
+                console.error('Error:', error);
+            }
+        }
+
+        // 綁定選項點擊事件
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.option-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    selectOption(this);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

@@ -7,8 +7,8 @@
 
   <!-- Markdown -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  
-  <!-- MathJax 設定 -->
+
+  <!-- MathJax -->
   <script>
     window.MathJax = {
       tex: {
@@ -17,115 +17,38 @@
         processEscapes: true,
         processEnvironments: true
       },
-      options: {
-        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
-      },
-      startup: {
-        pageReady: () => {
-          return MathJax.startup.defaultPageReady();
-        }
-      }
+      startup: { pageReady: () => MathJax.startup.defaultPageReady() }
     };
   </script>
   <script id="MathJax-script" async
-    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
-  </script>
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
   <style>
-    body { font-family: "Microsoft JhengHei", Arial, sans-serif; background:#fff5f7; margin:0; }
+    body { font-family:"Microsoft JhengHei",Arial,sans-serif; background:#fff5f7; margin:0; }
     header { background:linear-gradient(180deg,#ffe6ef 0%,#ffddee 100%); padding:20px; text-align:center;
-      font-size:28px; font-weight:700; color:#d63384; border-bottom:3px solid #ffc0cb; position: relative; }
+      font-size:28px; font-weight:700; color:#d63384; border-bottom:3px solid #ffc0cb; position:relative; }
     header .icon { font-size:32px; margin-right:8px; }
 
-    .user-info { 
-      position: absolute; 
-      top: 20px; 
-      right: 20px; 
-      background: rgba(255,255,255,0.9); 
-      padding: 8px 16px; 
-      border-radius: 20px; 
-      font-size: 14px; 
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .user-info a { 
-      color: #d63384; 
-      text-decoration: none; 
-      margin-left: 10px; 
-      font-weight: bold;
-    }
-    .user-info a:hover { text-decoration: underline; }
-
-    .auth-buttons { 
-      position: absolute; 
-      top: 20px; 
-      right: 20px; 
-      display: flex;
-      gap: 10px;
-    }
-    .auth-btn { 
-      background: #ff7fbf; 
-      color: white; 
-      padding: 8px 16px; 
-      border-radius: 20px; 
-      text-decoration: none; 
-      font-size: 14px;
-      font-weight: bold;
-    }
-    .auth-btn:hover { 
-      background: #ff66a3; 
-      text-decoration: none;
-      color: white;
-    }
-
-    .questionnaire-banner {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 15px;
-      text-align: center;
-      margin: 10px 0;
-      border-radius: 10px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
-    .questionnaire-btn {
-      background: white;
-      color: #667eea;
-      padding: 10px 20px;
-      border-radius: 25px;
-      text-decoration: none;
-      font-weight: bold;
-      display: inline-block;
-      margin-top: 8px;
-      transition: all 0.3s ease;
-    }
-    .questionnaire-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      text-decoration: none;
-      color: #667eea;
-    }
+    .user-info, .auth-buttons { position:absolute; top:20px; right:20px; }
+    .user-info { background:rgba(255,255,255,0.9); padding:8px 16px; border-radius:20px;
+      font-size:14px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+    .user-info a, .auth-btn { color:#d63384; text-decoration:none; font-weight:bold; }
+    .user-info a:hover, .auth-btn:hover { text-decoration:underline; }
+    .auth-buttons { display:flex; gap:10px; }
+    .auth-btn { background:#ff7fbf; color:white; padding:8px 16px; border-radius:20px; font-size:14px; }
+    .auth-btn:hover { background:#ff66a3; }
 
     main { max-width:820px; margin:20px auto; padding:0 16px; }
     .chat-box { background:#fff; border-radius:16px; box-shadow:0 0 20px rgba(255,182,193,.25);
       padding:18px; margin-bottom:16px; max-height:70vh; overflow-y:auto; }
-    
-    .message { 
-      border-radius:12px; 
-      padding:12px 16px; 
-      margin:10px 0; 
-      line-height:1.7; 
-      word-wrap:break-word;
-      overflow-x: auto;
-      max-width: 100%;
-      box-sizing: border-box;
-    }
-    
+
+    .message { border-radius:12px; padding:12px 16px; margin:10px 0; line-height:1.7;
+      word-wrap:break-word; overflow-x:auto; max-width:100%; }
     .user { background:#e7f2ff; border-left:6px solid #0078d7; color:#0f3b6d; }
     .assistant { background:#ffe6f0; border-left:6px solid #ff85a2; color:#5a2e3a; }
 
-    .controls { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin:12px 0 4px; }
-    .row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
-
-    input[type="text"]{ flex:1 1 520px; max-width:620px; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:16px; }
+    .controls { display:flex; gap:10px; justify-content:center; margin:12px 0; flex-wrap:wrap; }
+    input[type="text"]{ flex:1; max-width:620px; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:16px; }
 
     .btn { padding:10px 16px; font-size:16px; border:none; border-radius:8px; cursor:pointer; }
     .btn-primary { background:#ff7fbf; color:#fff; }
@@ -138,326 +61,107 @@
     .btn-bad:hover { background:#64b5f6; }
 
     .upload { background:#fff; border:1px dashed #ffb3c9; border-radius:12px; padding:12px; text-align:center; }
-    .upload input[type="file"]{ max-width:260px; }
     #preview { margin-top:10px; max-width:180px; border-radius:8px; display:none; }
 
+    .login-card {
+      background:#fff; border-radius:16px; padding:30px; max-width:420px; margin:50px auto;
+      box-shadow:0 0 20px rgba(255,182,193,.25); text-align:center;
+    }
+    .login-card input { width:90%; margin:10px 0; padding:10px; border-radius:8px; border:1px solid #ccc; }
+    .error { color:#e91e63; margin-top:10px; }
+
     footer { text-align:center; margin:18px 0 28px; color:#777; font-size:13px; }
-    
-    /* 手機版優化 */
-    @media (max-width: 600px) {
-      .message { 
-        padding: 10px 12px;
-        font-size: 15px;
-      }
-      
-      .message mjx-container {
-        font-size: 90% !important;
-      }
 
-      .user-info, .auth-buttons {
-        position: static;
-        text-align: center;
-        margin-top: 10px;
-      }
-
-      .auth-buttons {
-        justify-content: center;
-      }
+    @media(max-width:600px){
+      .message{font-size:15px;padding:10px 12px;}
+      .user-info,.auth-buttons{position:static;text-align:center;margin-top:10px;}
+      .auth-buttons{justify-content:center;}
     }
   </style>
 </head>
 <body>
   <header>
     <span class="icon">🧮</span> 數學小老師安安
-    
     {% if username %}
       <div class="user-info">
-        歡迎，{{ username }}！
-        <a href="/questionnaire">我的學習檔案</a>
-        <a href="/logout">登出</a>
-      </div>
-    {% else %}
-      <div class="auth-buttons">
-        <a href="/login" class="auth-btn">登入</a>
-        <a href="/register" class="auth-btn">註冊</a>
+        歡迎，{{ username }}！<a href="/logout">登出</a>
       </div>
     {% endif %}
   </header>
 
   <main>
-    {% if not username %}
-      <div class="questionnaire-banner">
-        <h3>🎯 探索你的學習風格！</h3>
-        <p>完成認知風格問卷，獲得專屬學習建議</p>
-        <a href="/register" class="questionnaire-btn">立即註冊開始</a>
-      </div>
-    {% elif session.get('cognitive_profile') %}
-      <div class="questionnaire-banner" style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);">
-        <h3>🎉 你的學習類型：{{ session.cognitive_profile.type }}</h3>
-        <p>{{ session.cognitive_profile.description }}</p>
-        <a href="/questionnaire_result" class="questionnaire-btn">查看完整報告</a>
-      </div>
-    {% else %}
-      <div class="questionnaire-banner">
-        <h3>🔍 發現你的學習超能力！</h3>
-        <p>完成「大腦探險家」問卷，解鎖專屬學習策略</p>
-        <a href="/questionnaire" class="questionnaire-btn">開始探險</a>
+    <!-- 未登入狀態：登入或註冊表單 -->
+    {% if show_login %}
+      <div class="login-card">
+        <h2>🔐 登入安安系統</h2>
+        {% if login_error %}<div class="error">{{ login_error }}</div>{% endif %}
+        <form method="post" action="/login">
+          <input type="text" name="username" placeholder="帳號" required><br>
+          <input type="password" name="password" placeholder="密碼" required><br>
+          <button type="submit" class="btn btn-primary">登入</button>
+        </form>
+        <p style="margin-top:15px;">還沒有帳號？</p>
+        <form method="post" action="/register">
+          <input type="text" name="username" placeholder="新帳號" required><br>
+          <input type="password" name="password" placeholder="新密碼" required><br>
+          <button type="submit" class="btn btn-secondary">註冊</button>
+        </form>
       </div>
     {% endif %}
 
-    <div class="chat-box" id="chatBox">
-      {% for msg in conversation %}
-        {% if msg.role == 'user' %}
-          <div class="message user">👧 你：{{ msg.content }}</div>
-        {% else %}
-          <div class="message assistant">
-            <strong>👩‍🏫 安安老師：</strong><br>
-            <span class="markdown-content" data-raw="{{ msg.content | escape }}"></span>
-          </div>
-        {% endif %}
-      {% endfor %}
-    </div>
-
-    <form method="post" action="/">
-      <div class="row">
-        <input type="text" name="message" placeholder="輸入你的問題..." required>
-        <button class="btn btn-primary" type="submit">送出</button>
-        <button class="btn btn-secondary" type="button" onclick="clearChat()">清除紀錄</button>
+    <!-- 登入後顯示聊天區 -->
+    {% if show_chat %}
+      <div class="chat-box" id="chatBox">
+        {% for msg in conversation %}
+          {% if msg.role == 'user' %}
+            <div class="message user">👧 你：{{ msg.content }}</div>
+          {% else %}
+            <div class="message assistant">
+              <strong>👩‍🏫 安安老師：</strong><br>
+              <span class="markdown-content" data-raw="{{ msg.content | escape }}"></span>
+            </div>
+          {% endif %}
+        {% endfor %}
       </div>
-    </form>
 
-    <div class="upload" style="margin-top:14px;">
-      <form id="imgForm" enctype="multipart/form-data" onsubmit="return false;">
-        <input type="file" name="image" accept="image/*" required onchange="previewImage(event)">
-        <button class="btn btn-primary" type="button" onclick="uploadImage()">上傳圖片題 📷</button>
+      <form method="post" action="/">
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <input type="text" name="message" placeholder="輸入你的問題..." required>
+          <button class="btn btn-primary" type="submit">送出</button>
+          <button class="btn btn-secondary" type="button" onclick="clearChat()">清除紀錄</button>
+        </div>
       </form>
-      <img id="preview" alt="預覽圖">
-      <p id="uploadStatus" style="margin:8px 0 0; color:#d63384;"></p>
-    </div>
 
-    <div class="controls">
-      <button class="btn btn-good" onclick="sendFeedback(true)">懂了 💡</button>
-      <button class="btn btn-bad" onclick="sendFeedback(false)">不懂 😵</button>
-    </div>
+      <div class="upload" style="margin-top:14px;">
+        <form id="imgForm" enctype="multipart/form-data" onsubmit="return false;">
+          <input type="file" name="image" accept="image/*" required onchange="previewImage(event)">
+          <button class="btn btn-primary" type="button" onclick="uploadImage()">上傳圖片題 📷</button>
+        </form>
+        <img id="preview" alt="預覽圖">
+        <p id="uploadStatus" style="margin:8px 0 0;color:#d63384;"></p>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-good" onclick="sendFeedback(true)">懂了 💡</button>
+        <button class="btn btn-bad" onclick="sendFeedback(false)">不懂 😵</button>
+      </div>
+    {% endif %}
   </main>
 
   <footer>© 2025 WeShareAI 教育服務｜安安數學助教系統</footer>
 
   <script>
-    // ============================================================
-    // 🔥 專家級解決方案：使用 HTML 註釋作為 placeholder
-    // 核心原理：HTML 註釋不會被 Markdown 處理，確保安全
-    // ============================================================
-    
-    let mathCache = [];
-    
-    // 保護數學公式：使用 HTML 註釋格式的 placeholder
-    function protectMath(text) {
-      mathCache = [];
-      let index = 0;
-      
-      // 1. 先保護 $$...$$ 區塊公式
-      text = text.replace(/\$\$([\s\S]+?)\$\$/g, function(match) {
-        const placeholder = `<!--MATH-BLOCK-${index}-->`;
-        mathCache.push({
-          content: match,
-          placeholder: placeholder,
-          type: 'block'
-        });
-        index++;
-        return placeholder;
-      });
-      
-      // 2. 再保護 $...$ 行內公式
-      text = text.replace(/\$([^\$\n]+?)\$/g, function(match) {
-        const placeholder = `<!--MATH-INLINE-${index}-->`;
-        mathCache.push({
-          content: match,
-          placeholder: placeholder,
-          type: 'inline'
-        });
-        index++;
-        return placeholder;
-      });
-      
-      return text;
-    }
-    
-    // 還原數學公式：從 HTML 註釋還原回數學公式
-    function restoreMath(html) {
-      mathCache.forEach(item => {
-        // 使用全局替換，確保所有 placeholder 都被替換
-        while (html.indexOf(item.placeholder) !== -1) {
-          html = html.replace(item.placeholder, item.content);
-        }
-      });
-      return html;
-    }
-
-    // 配置 marked
-    marked.setOptions({
-      breaks: true,
-      gfm: true
-    });
-
-    // 渲染單一訊息
-    function renderMessage(element) {
-      const rawText = element.dataset.raw;
-      if (!rawText || element.dataset.rendered) return;
-      
-      try {
-        // 步驟 1: 保護數學公式
-        const protected = protectMath(rawText);
-        
-        // 步驟 2: Marked 渲染 Markdown
-        let html = marked.parse(protected);
-        
-        // 步驟 3: 還原數學公式
-        html = restoreMath(html);
-        
-        // 步驟 4: 寫入 DOM
-        element.innerHTML = html;
-        element.dataset.rendered = "true";
-        
-      } catch (error) {
-        console.error('渲染錯誤:', error);
-        // 降級處理：直接顯示原始文本
-        element.innerHTML = rawText.replace(/\n/g, '<br>');
-        element.dataset.rendered = "true";
-      }
-    }
-
-    // 渲染所有訊息並觸發 MathJax
-    function renderAllMessages() {
-      // 渲染 Markdown
-      document.querySelectorAll(".markdown-content").forEach(renderMessage);
-      
-      // 渲染數學公式
-      if (window.MathJax && window.MathJax.typesetPromise) {
-        MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
-      }
-    }
-
-    // 頁面載入後渲染
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(renderAllMessages, 200);
-      });
-    } else {
-      setTimeout(renderAllMessages, 200);
-    }
-
-    function clearChat() { 
-      window.location.href="/clear"; 
-    }
-
-    // 圖片預覽
-    function previewImage(e) {
-      const file = e.target.files[0];
-      const preview = document.getElementById("preview");
-      if (file) {
-        if (file.size > 5 * 1024 * 1024) {
-          alert("圖片檔案太大！請上傳小於 5MB 的圖片");
-          e.target.value = "";
-          return;
-        }
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = "block";
-      } else {
-        preview.style.display = "none";
-      }
-    }
-
-    // 上傳圖片
-    async function uploadImage() {
-      const form = document.getElementById("imgForm");
-      const fd = new FormData(form);
-      const s = document.getElementById("uploadStatus");
-      const chat = document.getElementById("chatBox");
-      
-      s.innerText = "";
-
-      const userMsg = document.createElement("div");
-      userMsg.className = "message user";
-      userMsg.textContent = "📷 你上傳了一張圖片題";
-      chat.appendChild(userMsg);
-
-      const botMsg = document.createElement("div");
-      botMsg.className = "message assistant";
-      botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>⏳ 思考中...🧮";
-      chat.appendChild(botMsg);
-      chat.scrollTop = chat.scrollHeight;
-
-      try {
-        const r = await fetch("/analyze_image", { method: "POST", body: fd });
-        const data = await r.json();
-
-        const contentSpan = document.createElement("span");
-        contentSpan.className = "markdown-content";
-        contentSpan.dataset.raw = data.result || "圖片解析失敗";
-        
-        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>";
-        botMsg.appendChild(contentSpan);
-
-        renderMessage(contentSpan);
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          MathJax.typesetPromise([botMsg]).catch((err) => console.log('MathJax error:', err));
-        }
-
-        chat.scrollTop = chat.scrollHeight;
-        form.reset();
-        document.getElementById("preview").style.display = "none";
-        s.innerText = "✅ 完成";
-        setTimeout(() => { s.innerText = ""; }, 2000);
-
-      } catch (e) {
-        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌ 連線異常，請稍後再試";
-        s.innerText = "";
-        console.error("上傳錯誤:", e);
-      }
-    }
-
-    // 懂了/不懂
-    async function sendFeedback(understood) {
-      const chat = document.getElementById("chatBox");
-      
-      const userMsg = document.createElement("div");
-      userMsg.className = "message user";
-      userMsg.textContent = understood ? "👍 我懂了！" : "😵 我不懂...";
-      chat.appendChild(userMsg);
-
-      const botMsg = document.createElement("div");
-      botMsg.className = "message assistant";
-      botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>思考中...🧮";
-      chat.appendChild(botMsg);
-      chat.scrollTop = chat.scrollHeight;
-
-      try {
-        const r = await fetch("/feedback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ understood })
-        });
-        const data = await r.json();
-        
-        const contentSpan = document.createElement("span");
-        contentSpan.className = "markdown-content";
-        contentSpan.dataset.raw = data.reply || "收到！";
-        
-        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>";
-        botMsg.appendChild(contentSpan);
-        
-        renderMessage(contentSpan);
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          MathJax.typesetPromise([botMsg]).catch((err) => console.log('MathJax error:', err));
-        }
-        
-        chat.scrollTop = chat.scrollHeight;
-      } catch (e) {
-        botMsg.innerHTML = "<strong>👩‍🏫 安安老師：</strong><br>❌ 回饋傳送失敗，稍後再試";
-        console.error("回饋錯誤:", e);
-      }
-    }
+    let mathCache=[];
+    function protectMath(t){mathCache=[];let i=0;t=t.replace(/\$\$([\s\S]+?)\$\$/g,m=>{let p=`<!--MATH-BLOCK-${i}-->`;mathCache.push({content:m,placeholder:p});i++;return p});t=t.replace(/\$([^\$\n]+?)\$/g,m=>{let p=`<!--MATH-INLINE-${i}-->`;mathCache.push({content:m,placeholder:p});i++;return p});return t}
+    function restoreMath(h){mathCache.forEach(it=>{while(h.indexOf(it.placeholder)!==-1){h=h.replace(it.placeholder,it.content)}});return h}
+    marked.setOptions({breaks:true,gfm:true});
+    function renderMessage(el){const raw=el.dataset.raw;if(!raw||el.dataset.rendered)return;try{let p=protectMath(raw);let html=marked.parse(p);html=restoreMath(html);el.innerHTML=html;el.dataset.rendered="true"}catch(e){el.innerHTML=raw.replace(/\n/g,"<br>");el.dataset.rendered="true"}}
+    function renderAllMessages(){document.querySelectorAll(".markdown-content").forEach(renderMessage);if(window.MathJax&&MathJax.typesetPromise){MathJax.typesetPromise().catch(err=>console.log("MathJax error:",err))}}
+    if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",()=>{setTimeout(renderAllMessages,200)});}else{setTimeout(renderAllMessages,200);}
+    function clearChat(){window.location.href="/clear";}
+    function previewImage(e){const f=e.target.files[0],p=document.getElementById("preview");if(f){if(f.size>5*1024*1024){alert("圖片檔案太大！");e.target.value="";return;}p.src=URL.createObjectURL(f);p.style.display="block"}else{p.style.display="none"}}
+    async function uploadImage(){const f=document.getElementById("imgForm");const fd=new FormData(f);const s=document.getElementById("uploadStatus");const c=document.getElementById("chatBox");s.innerText="";const u=document.createElement("div");u.className="message user";u.textContent="📷 你上傳了一張圖片題";c.appendChild(u);const b=document.createElement("div");b.className="message assistant";b.innerHTML="<strong>👩‍🏫 安安老師：</strong><br>⏳ 思考中...🧮";c.appendChild(b);c.scrollTop=c.scrollHeight;try{const r=await fetch("/analyze_image",{method:"POST",body:fd});const d=await r.json();const span=document.createElement("span");span.className="markdown-content";span.dataset.raw=d.result||"圖片解析失敗";b.innerHTML="<strong>👩‍🏫 安安老師：</strong><br>";b.appendChild(span);renderMessage(span);if(window.MathJax&&MathJax.typesetPromise){MathJax.typesetPromise([b])}c.scrollTop=c.scrollHeight;f.reset();document.getElementById("preview").style.display="none";s.innerText="✅ 完成";setTimeout(()=>{s.innerText=""},2000)}catch(e){b.innerHTML="<strong>👩‍🏫 安安老師：</strong><br>❌ 連線異常";s.innerText=""}}
+    async function sendFeedback(u){const c=document.getElementById("chatBox");const um=document.createElement("div");um.className="message user";um.textContent=u?"👍 我懂了！":"😵 我不懂...";c.appendChild(um);const bm=document.createElement("div");bm.className="message assistant";bm.innerHTML="<strong>👩‍🏫 安安老師：</strong><br>思考中...🧮";c.appendChild(bm);c.scrollTop=c.scrollHeight;try{const r=await fetch("/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({understood:u})});const d=await r.json();const span=document.createElement("span");span.className="markdown-content";span.dataset.raw=d.reply||"收到！";bm.innerHTML="<strong>👩‍🏫 安安老師：</strong><br>";bm.appendChild(span);renderMessage(span);if(window.MathJax&&MathJax.typesetPromise){MathJax.typesetPromise([bm])}c.scrollTop=c.scrollHeight}catch(e){bm.innerHTML="<strong>👩‍🏫 安安老師：</strong><br>❌ 回饋傳送失敗"}}
   </script>
 </body>
 </html>
