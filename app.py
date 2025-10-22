@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.6-stable (OCR uses OpenAI Vision only)
+# v5.0.7-fix (Gemini primary OCR, simplified prompts, MathJax fix)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.6-stable)")
+    print("Database ready (v5.0.7-fix)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -161,10 +161,35 @@ def solve_math(prompt: str) -> str:
     
     return "抱歉，所有 AI 服務暫時不可用，請稍後再試。"
 
+def ocr_with_gemini(file_storage) -> str:
+    """Use Gemini for OCR (primary)"""
+    if not GOOGLE_API_KEY:
+        return None
+    try:
+        import google.generativeai as genai
+        from PIL import Image
+        import io
+        
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        image_data = file_storage.read()
+        image = Image.open(io.BytesIO(image_data))
+        
+        prompt = "請用繁體中文辨識這張圖片的數學題目，並詳細解題。數學公式請用 Latex 格式（例如 $x^2$）。"
+        
+        rsp = model.generate_content([prompt, image])
+        print("Using Gemini OCR")
+        return rsp.text.strip()
+        
+    except Exception as e:
+        print(f"Gemini OCR error: {e}")
+        return None
+
 def ocr_with_openai(file_storage) -> str:
-    """Use OpenAI Vision for OCR (primary method)"""
+    """Use OpenAI Vision for OCR (backup)"""
     if not OPENAI_API_KEY:
-        return "抱歉，OCR 服務需要 OpenAI API Key。"
+        return None
     try:
         from openai import OpenAI
         import base64
@@ -174,34 +199,10 @@ def ocr_with_openai(file_storage) -> str:
         image_data = file_storage.read()
         base64_image = base64.b64encode(image_data).decode('utf-8')
         
-        prompt = """請用繁體中文回答。
-
-步驟1：OCR 辨識
-- 仔細辨識圖片中的所有文字內容（題目、選項、說明等）
-
-步驟2：圖形分析（如果有圖形）
-- 詳細描述圖形的結構（例如：方格的行數、列數、顏色分布）
-- 列出每個圖案的具體數據（例如：圖一有幾行幾列、灰色幾個、白色幾個）
-- 不要猜測！請根據實際看到的內容分析
-
-步驟3：找出規律
-- 比較各圖案之間的變化
-- 找出數量或排列的遞增/遞減規律
-- 用具體數字說明規律
-
-步驟4：詳細解題
-- 用國小到國中程度的語言，一步步講解
-- 數學公式用 Latex 格式（例如 $x^2$ 或 $$...$$）
-- 解釋為什麼這樣算
-
-步驟5：給出最終答案
-- 清楚標示答案
-- 若有單位請加上
-
-重要：請仔細觀察圖形的每個細節，不要隨意猜測數據！"""
+        prompt = "Please identify the math problem in this image and solve it step by step in Traditional Chinese. Use Latex format for math formulas (like $x^2$)."
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "user",
@@ -210,22 +211,21 @@ def ocr_with_openai(file_storage) -> str:
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high"
+                                "url": f"data:image/jpeg;base64,{base64_image}"
                             }
                         }
                     ]
                 }
             ],
-            max_tokens=2000
+            max_tokens=1500
         )
         
-        print("Using OpenAI Vision OCR")
+        print("Using OpenAI Vision OCR (backup)")
         return response.choices[0].message.content.strip()
         
     except Exception as e:
         print(f"OpenAI Vision OCR error: {e}")
-        return f"抱歉，圖片辨識失敗：{e}"
+        return None
 
 @app.route('/')
 def index():
@@ -298,7 +298,15 @@ def upload():
     if not file or file.filename == '':
         return jsonify({"reply":"檔案名稱是空的"}), 400
 
-    reply = ocr_with_openai(file)
+    reply = ocr_with_gemini(file)
+    
+    if not reply:
+        file.seek(0)
+        reply = ocr_with_openai(file)
+    
+    if not reply:
+        reply = "抱歉，圖片辨識服務暫時不可用，請稍後再試。"
+    
     return jsonify({"reply": reply}), 200
 
 @app.route('/clear')
@@ -315,7 +323,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.6-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.7-fix"})
 
 @app.route('/smoke')
 def smoke():

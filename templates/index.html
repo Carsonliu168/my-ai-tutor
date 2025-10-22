@@ -4,35 +4,38 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🧮 數學小老師安安</title>
-
-  <!-- Markdown 支援 -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-  <!-- MathJax 支援 -->
-  <script id="MathJax-script" async
-    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
-  <!-- ✅ 正確載入靜態檔案 -->
+  
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      }
+    };
+  </script>
+  
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script defer src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
-
 <body>
   <header class="header">
     <h1>🧮 數學小老師安安</h1>
     <p class="subtitle">一起學數學，讓思考變得更有趣！</p>
   </header>
-
   <main>
     <div id="chat-box" class="chat-box">
       <div class="anan greeting">
         哈囉～我是安安！請輸入數學題目或拍照上傳，我會一步步陪你解出來 😊
       </div>
     </div>
-
     <div id="input-area" class="input-area">
       <textarea id="user-input" placeholder="輸入你的題目或想問的內容..."></textarea>
-
       <div class="button-group">
         <button class="btn send" onclick="sendMessage()">送出</button>
         <button class="btn clear" onclick="location.href='/clear'">清除紀錄</button>
@@ -40,13 +43,11 @@
         <button class="btn ok" onclick="sendMessage('我懂了')">懂了 👍</button>
         <button class="btn unsure" onclick="sendMessage('我不懂')">不懂 😕</button>
       </div>
-
       <input type="file" id="fileInput" style="display:none;" accept="image/*" onchange="uploadImage(this)">
     </div>
   </main>
-
   <footer>
-    <div id="version-tag">v5.0.1-full 🎀</div>
+    <div id="version-tag">v5.0.7-fix</div>
     <a href="/logout" class="logout-btn">登出</a>
   </footer>
 </body>
