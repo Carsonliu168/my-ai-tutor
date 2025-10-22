@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.4-stable
+# v5.0.5-stable (Traditional Chinese output)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.4-stable)")
+    print("Database ready (v5.0.5-stable)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -94,7 +94,7 @@ def solve_with_deepseek(prompt: str) -> str:
             api_key=DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com"
         )
-        sys = "You are AnAn, an elementary school math tutor. Explain step-by-step in simple Chinese. Use Latex for formulas."
+        sys = "你是小學數學家教「安安」。請用繁體中文、淺白易懂的方式一步步解題，必要時用 Latex 數學公式（$...$ 或 $$...$$）。先引導思考過程，最後給出答案。"
         rsp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role":"system","content":sys},
@@ -110,7 +110,7 @@ def solve_with_openai(prompt: str) -> str:
     try:
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
-        sys = "You are AnAn, an elementary school math tutor. Explain step-by-step in simple Chinese. Use Latex for formulas."
+        sys = "你是小學數學家教「安安」。請用繁體中文、淺白易懂的方式一步步解題，必要時用 Latex 數學公式（$...$ 或 $$...$$）。先引導思考過程，最後給出答案。"
         rsp = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[{"role":"system","content":sys},
@@ -127,7 +127,7 @@ def solve_with_gemini(prompt: str) -> str:
         import google.generativeai as genai
         genai.configure(api_key=GOOGLE_API_KEY)
         model = genai.GenerativeModel(os.getenv("GEMINI_MODEL","gemini-1.5-flash"))
-        sys = "You are AnAn, an elementary school math tutor. Explain step-by-step in simple Chinese. Use Latex for formulas."
+        sys = "你是小學數學家教「安安」。請用繁體中文、淺白易懂的方式一步步解題，必要時用 Latex 數學公式（$...$ 或 $$...$$）。先引導思考過程，最後給出答案。"
         rsp = model.generate_content([sys, prompt])
         return rsp.text.strip()
     except Exception as e:
@@ -139,7 +139,7 @@ def solve_math(prompt: str) -> str:
     if m:
         a, b = int(m.group(1)), int(m.group(2))
         result = a * b
-        return f"Good! Let's calculate: {a} × {b} = **{result}**"
+        return f"好的，我們來算：{a} × {b} = **{result}**\n\n是不是很簡單呢？ 😊"
     
     if DEEPSEEK_API_KEY:
         ans = solve_with_deepseek(prompt)
@@ -159,7 +159,7 @@ def solve_math(prompt: str) -> str:
             print("Using Gemini (last backup)")
             return ans
     
-    return "Sorry, all AI services are temporarily unavailable."
+    return "抱歉，所有 AI 服務暫時不可用，請稍後再試。"
 
 def ocr_with_gemini(file_storage) -> str:
     if not GOOGLE_API_KEY:
@@ -175,7 +175,7 @@ def ocr_with_gemini(file_storage) -> str:
         image_data = file_storage.read()
         image = Image.open(io.BytesIO(image_data))
         
-        prompt = "Please do OCR to extract the question text, then explain the solution step-by-step at an elementary school level. Provide the final answer with units if applicable. You can use Latex."
+        prompt = "請用繁體中文回答。先做 OCR 辨識題目文字，再用國小到國中程度一步步詳細講解解法，最後給出完整答案（若有單位請標示）。數學公式請用 Latex 格式（例如 $x^2$ 或 $$...$$）。"
         
         rsp = model.generate_content([prompt, image])
         print("Using Gemini OCR")
@@ -197,7 +197,7 @@ def ocr_with_openai(file_storage) -> str:
         image_data = file_storage.read()
         base64_image = base64.b64encode(image_data).decode('utf-8')
         
-        prompt = "Please do OCR to extract the question text, then explain the solution step-by-step at an elementary school level. Provide the final answer with units if applicable. You can use Latex."
+        prompt = "請用繁體中文回答。先做 OCR 辨識題目文字，再用國小到國中程度一步步詳細講解解法，最後給出完整答案（若有單位請標示）。數學公式請用 Latex 格式（例如 $x^2$ 或 $$...$$）。"
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -215,7 +215,7 @@ def ocr_with_openai(file_storage) -> str:
                     ]
                 }
             ],
-            max_tokens=1000
+            max_tokens=1500
         )
         
         print("Using OpenAI Vision OCR (Gemini backup)")
@@ -269,7 +269,7 @@ def chat():
     user_msg = payload.get("message") or request.form.get("message") or ""
     user_msg = user_msg.strip()
     if not user_msg:
-        return jsonify({"reply": "Please enter a question!"}), 200
+        return jsonify({"reply": "請輸入題目或問題喔～"}), 200
 
     reply = solve_math(user_msg)
 
@@ -288,13 +288,13 @@ def chat():
 @app.route('/upload', methods=['POST'])
 def upload():
     if 'user' not in session:
-        return jsonify({"reply":"Please login first"}), 401
+        return jsonify({"reply":"請先登入"}), 401
     if 'file' not in request.files:
-        return jsonify({"reply":"No file received"}), 400
+        return jsonify({"reply":"沒有收到圖片檔案"}), 400
 
     file = request.files['file']
     if not file or file.filename == '':
-        return jsonify({"reply":"Empty filename"}), 400
+        return jsonify({"reply":"檔案名稱是空的"}), 400
 
     reply = ocr_with_gemini(file)
     
@@ -303,7 +303,7 @@ def upload():
         reply = ocr_with_openai(file)
     
     if not reply:
-        reply = "Sorry, image recognition service is temporarily unavailable."
+        reply = "抱歉，圖片辨識服務暫時不可用，請稍後再試。"
     
     return jsonify({"reply": reply}), 200
 
@@ -321,7 +321,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.4-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.5-stable"})
 
 @app.route('/smoke')
 def smoke():
