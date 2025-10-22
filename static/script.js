@@ -10,7 +10,19 @@ function appendMessage(role, content) {
   }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
-  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise();
+  
+  // 改良的 MathJax 渲染
+  if (window.MathJax) {
+    if (MathJax.typesetPromise) {
+      MathJax.typesetPromise([div]).catch((err) => console.log('MathJax error:', err));
+    }
+  } else {
+    setTimeout(() => {
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([div]).catch((err) => console.log('MathJax error:', err));
+      }
+    }, 1000);
+  }
 }
 
 // 傳送純文字訊息
@@ -18,12 +30,9 @@ function sendMessage(preset) {
   const input = document.getElementById("user-input");
   const text = (preset || input.value || "").trim();
   if (!text) return;
-
   appendMessage("student", text);
   if (!preset) input.value = "";
-
   appendMessage("anan", "安安正在思考中...");
-
   fetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,7 +46,11 @@ function sendMessage(preset) {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
       last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
-      if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise();
+      
+      // 重新渲染 MathJax
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+      }
     })
     .catch(err => {
       const msgs = document.getElementsByClassName("anan");
@@ -53,10 +66,8 @@ function uploadImage(inputEl) {
   if (!f) return;
   appendMessage("student", `（已選擇圖片：${f.name}）`);
   appendMessage("anan", "安安正在辨識圖片與文字...");
-
   const fd = new FormData();
   fd.append("file", f);
-
   fetch("/upload", { method: "POST", body: fd })
     .then(r => {
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -66,7 +77,12 @@ function uploadImage(inputEl) {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
       last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
-      if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise();
+      
+      // 重新渲染 MathJax
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+      }
+      
       inputEl.value = ""; // 重置選擇
     })
     .catch(err => {

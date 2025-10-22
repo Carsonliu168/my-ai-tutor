@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v5.0.1-stable（含自動修復 users 表＋自動建立管理員帳號）
+# v5.0.2-stable（修復 Gemini OCR 問題）
 # ✅ 邏輯已補齊：/chat（解題）、/upload（OCR）、/clear（清除對話）
 # ================================
 
@@ -104,7 +104,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒（v5.0.1-stable）")
+    print("✅ [安安] 資料庫就緒（v5.0.2-stable）")
 init_db()
 
 # -------------------------------
@@ -130,7 +130,7 @@ def solve_with_gemini(prompt: str) -> str:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GOOGLE_API_KEY)
-        model = genai.GenerativeModel(os.getenv("GEMINI_MODEL","gemini-1.5-flash"))
+        model = genai.GenerativeModel(os.getenv("GEMINI_MODEL","gemini-1.5-flash-latest"))
         sys = ("你是小學數學家教「安安」。請用分步驟、淺白口吻解題，必要時用 Latex。")
         rsp = model.generate_content([sys, prompt])
         return rsp.text.strip()
@@ -167,22 +167,32 @@ def solve_math(prompt: str) -> str:
     return solve_with_deepseek(prompt)
 
 # -------------------------------
-# 🔧 小工具：圖片 OCR with Gemini
+# 🔧 小工具：圖片 OCR with Gemini（已修復）
 # -------------------------------
 def ocr_with_gemini(file_storage) -> str:
     if not GOOGLE_API_KEY:
         return "（OCR 需要 GOOGLE_API_KEY）"
     try:
         import google.generativeai as genai
+        from PIL import Image
+        import io
+        
         genai.configure(api_key=GOOGLE_API_KEY)
-        model = genai.GenerativeModel(os.getenv("GEMINI_VISION_MODEL","gemini-1.5-flash"))
-        mime = file_storage.mimetype or "image/png"
-        data = file_storage.read()
-        img_part = {"mime_type": mime, "data": data}
+        
+        # 使用最新穩定版本
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        
+        # 讀取圖片
+        image_data = file_storage.read()
+        image = Image.open(io.BytesIO(image_data))
+        
         prompt = ("請先做 OCR 擷取題目文字，再用國小程度一步步講解解法，"
                   "最後給出答案（若有單位要寫上）。可以用 Latex。")
-        rsp = model.generate_content([prompt, img_part])
+        
+        # 直接傳入 PIL Image 物件
+        rsp = model.generate_content([prompt, image])
         return rsp.text.strip()
+        
     except Exception as e:
         return f"（OCR 暫時不可用：{e}）"
 
@@ -281,7 +291,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.1-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.2-stable"})
 
 @app.route('/smoke')
 def smoke():
