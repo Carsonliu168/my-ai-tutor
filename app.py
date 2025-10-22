@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.8-stable (Fix LaTeX bracket format)
+# v5.0.9-stable (Restore simple OCR prompt)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.8-stable)")
+    print("Database ready (v5.0.9-stable)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -176,7 +176,7 @@ def ocr_with_gemini(file_storage) -> str:
         image_data = file_storage.read()
         image = Image.open(io.BytesIO(image_data))
         
-        prompt = "請用繁體中文辨識這張圖片的數學題目，並詳細解題。重要：數學公式必須用 $x^2$ (行內) 或 $$x^2$$ (區塊) 格式，絕對不要用方括號 [...] 包住公式。"
+        prompt = "請用繁體中文辨識圖片中的數學題目，然後一步步解題。數學公式請用標準的 LaTeX 格式（例如 $x^2$ 或 $$...$$）。"
         
         rsp = model.generate_content([prompt, image])
         print("Using Gemini OCR")
@@ -199,7 +199,7 @@ def ocr_with_openai(file_storage) -> str:
         image_data = file_storage.read()
         base64_image = base64.b64encode(image_data).decode('utf-8')
         
-        prompt = "Please identify the math problem in this image and solve it step by step in Traditional Chinese. IMPORTANT: Use $x^2$ for inline math or $$x^2$$ for display math. Do NOT use square brackets like [x^2]."
+        prompt = "請用繁體中文辨識圖片中的數學題目，然後一步步解題。數學公式請用標準的 LaTeX 格式（例如 $x^2$ 或 $$...$$）。"
         
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -323,7 +323,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.8-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.9-stable"})
 
 @app.route('/smoke')
 def smoke():
