@@ -1,6 +1,6 @@
 # ================================
 # 📘 安安專案主程式 app.py
-# v5.0.2-stable（修復 Gemini OCR 問題）
+# v5.0.3-stable（修復 Gemini OCR 模型名稱問題）
 # ✅ 邏輯已補齊：/chat（解題）、/upload（OCR）、/clear（清除對話）
 # ================================
 
@@ -104,7 +104,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("✅ [安安] 資料庫就緒（v5.0.2-stable）")
+    print("✅ [安安] 資料庫就緒（v5.0.3-stable）")
 init_db()
 
 # -------------------------------
@@ -130,7 +130,7 @@ def solve_with_gemini(prompt: str) -> str:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GOOGLE_API_KEY)
-        model = genai.GenerativeModel(os.getenv("GEMINI_MODEL","gemini-1.5-flash-latest"))
+        model = genai.GenerativeModel(os.getenv("GEMINI_MODEL","gemini-1.5-flash"))
         sys = ("你是小學數學家教「安安」。請用分步驟、淺白口吻解題，必要時用 Latex。")
         rsp = model.generate_content([sys, prompt])
         return rsp.text.strip()
@@ -167,7 +167,7 @@ def solve_math(prompt: str) -> str:
     return solve_with_deepseek(prompt)
 
 # -------------------------------
-# 🔧 小工具：圖片 OCR with Gemini（已修復）
+# 🔧 小工具：圖片 OCR with Gemini（自動偵測可用模型）
 # -------------------------------
 def ocr_with_gemini(file_storage) -> str:
     if not GOOGLE_API_KEY:
@@ -179,8 +179,31 @@ def ocr_with_gemini(file_storage) -> str:
         
         genai.configure(api_key=GOOGLE_API_KEY)
         
-        # 使用最新穩定版本
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # 嘗試多個可能的模型名稱（按優先順序）
+        model_names = [
+            'gemini-1.5-flash',
+            'gemini-1.5-pro',
+            'gemini-pro-vision',
+            'gemini-1.5-flash-001',
+            'gemini-1.5-flash-002'
+        ]
+        
+        model = None
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                model = genai.GenerativeModel(model_name)
+                # 嘗試一個簡單的測試看看模型是否可用
+                print(f"✅ 成功載入模型：{model_name}")
+                break
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ 模型 {model_name} 不可用：{e}")
+                continue
+        
+        if not model:
+            return f"（找不到可用的 Gemini 視覺模型，最後錯誤：{last_error}）"
         
         # 讀取圖片
         image_data = file_storage.read()
@@ -291,7 +314,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.2-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.3-stable"})
 
 @app.route('/smoke')
 def smoke():
