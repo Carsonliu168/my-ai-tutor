@@ -1,8 +1,7 @@
-// 追加訊息到對話框
 function appendMessage(role, content) {
   const box = document.getElementById("chat-box");
   const div = document.createElement("div");
-  div.className = role; // "anan" 或 "student"
+  div.className = role;
   try {
     div.innerHTML = marked.parse(content || "");
   } catch (e) {
@@ -11,7 +10,6 @@ function appendMessage(role, content) {
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   
-  // 改良的 MathJax 渲染
   if (window.MathJax) {
     if (MathJax.typesetPromise) {
       MathJax.typesetPromise([div]).catch((err) => console.log('MathJax error:', err));
@@ -25,7 +23,6 @@ function appendMessage(role, content) {
   }
 }
 
-// 傳送純文字訊息
 function sendMessage(preset) {
   const input = document.getElementById("user-input");
   const text = (preset || input.value || "").trim();
@@ -47,9 +44,9 @@ function sendMessage(preset) {
       const last = msgs[msgs.length - 1];
       
       try {
-        last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
+        last.innerHTML = marked.parse(data.reply || "(沒有回覆內容)");
       } catch (e) {
-        last.textContent = data.reply || "（沒有回覆內容）";
+        last.textContent = data.reply || "(沒有回覆內容)";
       }
       
       setTimeout(() => {
@@ -61,16 +58,15 @@ function sendMessage(preset) {
     .catch(err => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
-      last.textContent = "⚠️ 系統忙碌，請稍後再試。";
+      last.textContent = "系統忙碌，請稍後再試。";
       console.error(err);
     });
 }
 
-// 上傳圖片執行 OCR
 function uploadImage(inputEl) {
   const f = inputEl.files && inputEl.files[0];
   if (!f) return;
-  appendMessage("student", `（已選擇圖片：${f.name}）`);
+  appendMessage("student", "(已選擇圖片：" + f.name + ")");
   appendMessage("anan", "安安正在辨識圖片與文字...");
   const fd = new FormData();
   fd.append("file", f);
@@ -84,9 +80,9 @@ function uploadImage(inputEl) {
       const last = msgs[msgs.length - 1];
       
       try {
-        last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
+        last.innerHTML = marked.parse(data.reply || "(沒有回覆內容)");
       } catch (e) {
-        last.textContent = data.reply || "（沒有回覆內容）");
+        last.textContent = data.reply || "(沒有回覆內容)";
       }
       
       setTimeout(() => {
@@ -100,7 +96,7 @@ function uploadImage(inputEl) {
     .catch(err => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
-      last.textContent = "⚠️ 圖片上傳/辨識失敗，請稍後再試。";
+      last.textContent = "圖片上傳/辨識失敗，請稍後再試。";
       console.error(err);
     });
 }
