@@ -45,12 +45,18 @@ function sendMessage(preset) {
     .then(data => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
-      last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
       
-      // 重新渲染 MathJax
-      if (window.MathJax && MathJax.typesetPromise) {
-        MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+      try {
+        last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
+      } catch (e) {
+        last.textContent = data.reply || "（沒有回覆內容）";
       }
+      
+      setTimeout(() => {
+        if (window.MathJax && MathJax.typesetPromise) {
+          MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+        }
+      }, 300);
     })
     .catch(err => {
       const msgs = document.getElementsByClassName("anan");
@@ -76,14 +82,20 @@ function uploadImage(inputEl) {
     .then(data => {
       const msgs = document.getElementsByClassName("anan");
       const last = msgs[msgs.length - 1];
-      last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
       
-      // 重新渲染 MathJax
-      if (window.MathJax && MathJax.typesetPromise) {
-        MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+      try {
+        last.innerHTML = marked.parse(data.reply || "（沒有回覆內容）");
+      } catch (e) {
+        last.textContent = data.reply || "（沒有回覆內容）");
       }
       
-      inputEl.value = ""; // 重置選擇
+      setTimeout(() => {
+        if (window.MathJax && MathJax.typesetPromise) {
+          MathJax.typesetPromise([last]).catch((err) => console.log('MathJax error:', err));
+        }
+      }, 300);
+      
+      inputEl.value = "";
     })
     .catch(err => {
       const msgs = document.getElementsByClassName("anan");
