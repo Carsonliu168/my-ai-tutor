@@ -1,10 +1,7 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.0.12-fixed：修正用戶對話框顏色 + 上傳功能
-// ✅ 功能：
-// - 保留用戶(藍色)和安安(粉紅色)對話框
-// - 自動包裹數學公式
-// - 修正圖片上傳路由
+// v5.0.13-final：完整修正版
+// ✅ student(藍色) + anan(粉紅色) + 圖片上傳
 // ================================================
 
 // 🎨 顯示訊息到聊天框
@@ -12,13 +9,8 @@ function appendMessage(role, text) {
   const chatBox = document.getElementById("chat-box");
   const message = document.createElement("div");
   
-  // ✅ 根據角色套用不同的 CSS class
-  if (role === "user") {
-    message.className = "user";  // 藍色對話框
-  } else {
-    message.className = "anan";  // 粉紅色對話框(安安)
-  }
-  
+  // ✅ 正確的 class 名稱
+  message.className = role;  // "student" 或 "anan"
   message.innerHTML = text;
   chatBox.appendChild(message);
   chatBox.scrollTop = chatBox.scrollHeight;
@@ -37,8 +29,8 @@ function sendMessage(presetText) {
   
   if (!input) return;
 
-  // 顯示用戶訊息(藍色)
-  appendMessage("user", input);
+  // 顯示學生訊息(藍色)
+  appendMessage("student", input);
   userInput.value = "";
   loadingText.style.display = "block";
 

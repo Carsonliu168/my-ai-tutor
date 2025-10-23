@@ -45,12 +45,12 @@
           <button type="button" class="btn unsure" onclick="sendMessage('我不懂')">不懂 😕</button>
         </div>
       </form>
-      <input type="file" id="image-upload" style="display:none;" accept="image/*">
+      <input type="file" id="image-upload" style="display:none;" accept="image/*" onchange="uploadImage(this)">
       <div id="loading-text" style="display:none; text-align:center; color:#666;">處理中...</div>
     </div>
   </main>
   <footer>
-    <div id="version-tag">v5.0.11-fixed</div>
+    <div id="version-tag">v5.0.13-final</div>
     <a href="/logout" class="logout-btn">登出</a>
   </footer>
 </body>
