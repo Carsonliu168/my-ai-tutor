@@ -1,16 +1,18 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.0.16-complete：完整修訂版 + 思考中提示
+// v5.0.18-smart：智能「不懂」按鈕版
 // ✅ 功能：
 // - student(藍色) + anan(粉紅色) 對話框
 // - 文字題和圖片題都顯示「安安思考中...」
+// - 智能「不懂」按鈕：記住上一題,追蹤次數
 // - 自動包裹數學公式
-// - 自動清除多餘或未配對的 $
-// - 自動修正孤立 \left / \right
 // - 完整支援繁體中文字與即時渲染
-// - 圖片上傳功能
-// - 懂了/不懂按鈕(保持原樣)
 // ================================================
+
+// 🧠 全域變數：記住上一題和困惑次數
+let lastQuestion = "";
+let confusionCount = 0;
+
 document.addEventListener("DOMContentLoaded", () => {
   const chatForm = document.getElementById("chat-form");
   const userInput = document.getElementById("user-input");
@@ -23,26 +25,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!text) return text;
 
     // ---------- 🧹 1️⃣ 清理多餘符號 ----------
-    // 移除重複或孤立的 $ 符號
     text = text.replace(/\$\$\$/g, "$$");
     text = text.replace(/\$\s*\$/g, "$");
-
-    // 修正多餘 $$...$$$$ 的狀況
     text = text.replace(/\$\$([^\$]+)\$\$\$/g, "$$$1$$");
 
     // ---------- 🧱 2️⃣ 修正未配對的 \left / \right ----------
-    // 將孤立的 \left / \right 改為普通括號，防止報錯
     text = text.replace(/\\left(?![({[])/g, "(");
     text = text.replace(/\\right(?![)}\]])/g, ")");
 
     // ---------- 🧮 3️⃣ 自動包裹公式 ----------
-    // 把 [ ... ] 包成 $...$
     text = text.replace(/\[([^\[\]]+)\]/g, "\$$1\$");
-
-    // 把未包起來的 \frac、\sqrt、自動加上 $
     text = text.replace(/([^$])((?:\\frac|\\sqrt|\\sin|\\cos|\\tan)[^$ ]+)/g, "$1\$$2\$");
-
-    // 把簡單的 a + b / c × d 自動包起來
     text = text.replace(/([=：])([\d\w\s\\\+\-\*\/\(\)\.]+)([。；\)])/g, "$1\$$2\$$3");
 
     return text;
@@ -66,6 +59,10 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     const input = userInput.value.trim();
     if (!input) return;
+
+    // 🔄 記住這個問題,並重置困惑計數
+    lastQuestion = input;
+    confusionCount = 0;
 
     appendMessage("student", input);
     userInput.value = "";
@@ -121,6 +118,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const formData = new FormData();
     formData.append("file", file);
 
+    // 🔄 圖片題也要記住,重置困惑計數
+    lastQuestion = "[圖片題目]";
+    confusionCount = 0;
+
     // ✅ 立即在對話框顯示「安安思考中...」
     const thinkingMsg = document.createElement("div");
     thinkingMsg.className = "anan";
@@ -172,14 +173,46 @@ function sendMessage(presetText) {
   const userInput = document.getElementById("user-input");
   const chatBox = document.getElementById("chat-box");
   const loadingText = document.getElementById("loading-text");
-  const input = presetText || userInput.value.trim();
   
-  if (!input) return;
+  let actualMessage = presetText || userInput.value.trim();
+  
+  if (!actualMessage) return;
 
-  // 顯示學生訊息（藍色）
+  // 🎯 智能「不懂」按鈕邏輯
+  if (actualMessage === "我不懂") {
+    confusionCount++;
+    
+    if (confusionCount === 1) {
+      // 第1次按「不懂」→ 問哪個步驟不懂
+      if (lastQuestion) {
+        actualMessage = `關於這題「${lastQuestion}」,我有些地方不太懂`;
+      } else {
+        actualMessage = "我不懂";
+      }
+    } else if (confusionCount === 2) {
+      // 第2次按「不懂」→ 請求換個方法
+      if (lastQuestion) {
+        actualMessage = `這題「${lastQuestion}」我還是不太懂,可以換一個方法再教我一次嗎?`;
+      } else {
+        actualMessage = "我還是不懂,可以換個方法嗎?";
+      }
+    } else if (confusionCount >= 3) {
+      // 第3次以上按「不懂」→ 建議問老師
+      actualMessage = "我按了很多次不懂了";
+    }
+  } else if (actualMessage === "我懂了") {
+    // 「懂了」按鈕 → 重置困惑計數
+    confusionCount = 0;
+  } else {
+    // 其他訊息 → 視為新問題,重置困惑計數並記住問題
+    lastQuestion = actualMessage;
+    confusionCount = 0;
+  }
+
+  // 顯示學生訊息（藍色）- 顯示原始的「我懂了」或「我不懂」
   const studentMsg = document.createElement("div");
   studentMsg.className = "student";
-  studentMsg.innerHTML = input;
+  studentMsg.innerHTML = presetText || actualMessage;
   chatBox.appendChild(studentMsg);
   chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -195,10 +228,11 @@ function sendMessage(presetText) {
   
   loadingText.style.display = "block";
 
+  // 🚀 發送實際訊息給後端
   fetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: input })
+    body: JSON.stringify({ message: actualMessage })
   })
   .then(res => res.json())
   .then(data => {
@@ -254,6 +288,10 @@ function uploadImage(input) {
   const loadingText = document.getElementById("loading-text");
   const formData = new FormData();
   formData.append("file", file);
+
+  // 🔄 圖片題也要記住,重置困惑計數
+  lastQuestion = "[圖片題目]";
+  confusionCount = 0;
 
   // ✅ 立即在對話框顯示「安安思考中...」
   const thinkingMsg = document.createElement("div");
