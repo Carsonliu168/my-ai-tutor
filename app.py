@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.12-bracket-check (Add bracket validation)
+# v5.0.12-praise-fixed (Add praise reply when student says "我懂了")
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.12-bracket-check)")
+    print("Database ready (v5.0.12-praise-fixed)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -340,6 +340,22 @@ def chat():
     if not user_msg:
         return jsonify({"reply": "請輸入題目或問題喔～"}), 200
 
+    # 🧠 新增「我懂了」自動讚美回覆邏輯
+    if user_msg in ["我懂了", "懂了", "了解了", "知道了", "OK", "ok", "好喔", "好啦", "行啦"]:
+        praise_list = [
+            "太棒了！安安老師為你鼓掌～👏👏👏",
+            "你真的越來越厲害了！🌟",
+            "學習態度超棒，繼續保持喔！💪",
+            "好棒喔～你真的懂了！😊",
+            "太讚了～安安要給你一顆金星⭐",
+            "安安老師超驕傲！你做得很好！🎉",
+            "真聰明～這題難不倒你！💡",
+            "安安看得出你很努力，繼續加油！🔥"
+        ]
+        import random
+        reply = random.choice(praise_list)
+        return jsonify({"reply": reply}), 200
+
     reply = solve_math(user_msg)
 
     try:
@@ -390,7 +406,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.12-bracket-check"})
+    return jsonify({"status": "ok", "version": "v5.0.12-praise-fixed"})
 
 @app.route('/smoke')
 def smoke():
