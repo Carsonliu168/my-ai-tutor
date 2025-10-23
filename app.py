@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.11-strict (Strict formatting rules)
+# v5.0.12-bracket-check (Add bracket validation)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.11-strict)")
+    print("Database ready (v5.0.12-bracket-check)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -102,11 +102,14 @@ def solve_with_deepseek(prompt: str) -> str:
 3. 嚴格禁止使用 - 或 * 開頭的列表,直接用數字或文字即可
 4. 嚴格禁止使用 ** 或 __ 包圍文字(Markdown 粗體),直接用普通文字
 5. 每個步驟之間空一行,讓閱讀更清楚
+6. 數學公式中的所有大括號 { } 必須成對出現,檢查每個左括號 { 都有對應的右括號 }
 
 【正確範例】
 步驟一:設未知數為 $x$
 
 我們可以列出方程式 $2x + 3 = 7$
+
+使用分數 $\\frac{1}{2}$ 來表示
 
 解得 $x = 2$
 
@@ -114,6 +117,7 @@ def solve_with_deepseek(prompt: str) -> str:
 - 步驟一 (錯誤:使用了列表符號)
 \\( 2x + 3 = 7 \\) (錯誤:使用了 \\( \\) 格式)
 **答案** (錯誤:使用了粗體)
+$\\frac{1{2}$ (錯誤:括號不成對)
 
 請先引導思考過程,最後給出答案。"""
         
@@ -140,11 +144,14 @@ def solve_with_openai(prompt: str) -> str:
 3. 嚴格禁止使用 - 或 * 開頭的列表,直接用數字或文字即可
 4. 嚴格禁止使用 ** 或 __ 包圍文字(Markdown 粗體),直接用普通文字
 5. 每個步驟之間空一行,讓閱讀更清楚
+6. 數學公式中的所有大括號 { } 必須成對出現,檢查每個左括號 { 都有對應的右括號 }
 
 【正確範例】
 步驟一:設未知數為 $x$
 
 我們可以列出方程式 $2x + 3 = 7$
+
+使用分數 $\\frac{1}{2}$ 來表示
 
 解得 $x = 2$
 
@@ -152,6 +159,7 @@ def solve_with_openai(prompt: str) -> str:
 - 步驟一 (錯誤:使用了列表符號)
 \\( 2x + 3 = 7 \\) (錯誤:使用了 \\( \\) 格式)
 **答案** (錯誤:使用了粗體)
+$\\frac{1{2}$ (錯誤:括號不成對)
 
 請先引導思考過程,最後給出答案。"""
         
@@ -179,11 +187,14 @@ def solve_with_gemini(prompt: str) -> str:
 3. 嚴格禁止使用 - 或 * 開頭的列表,直接用數字或文字即可
 4. 嚴格禁止使用 ** 或 __ 包圍文字(Markdown 粗體),直接用普通文字
 5. 每個步驟之間空一行,讓閱讀更清楚
+6. 數學公式中的所有大括號 { } 必須成對出現,檢查每個左括號 { 都有對應的右括號 }
 
 【正確範例】
 步驟一:設未知數為 $x$
 
 我們可以列出方程式 $2x + 3 = 7$
+
+使用分數 $\\frac{1}{2}$ 來表示
 
 解得 $x = 2$
 
@@ -191,6 +202,7 @@ def solve_with_gemini(prompt: str) -> str:
 - 步驟一 (錯誤:使用了列表符號)
 \\( 2x + 3 = 7 \\) (錯誤:使用了 \\( \\) 格式)
 **答案** (錯誤:使用了粗體)
+$\\frac{1{2}$ (錯誤:括號不成對)
 
 請先引導思考過程,最後給出答案。"""
         
@@ -249,7 +261,8 @@ def ocr_with_gemini(file_storage) -> str:
 2. 嚴格禁止使用 \\( \\) 或 \\[ \\] 這種 LaTeX 格式
 3. 嚴格禁止使用 - 或 * 開頭的列表
 4. 嚴格禁止使用 ** 粗體語法
-5. 每個步驟之間空一行"""
+5. 每個步驟之間空一行
+6. 數學公式中的所有大括號 { } 必須成對出現"""
         
         rsp = model.generate_content([prompt, image])
         print("Using Gemini OCR")
@@ -279,7 +292,8 @@ def ocr_with_openai(file_storage) -> str:
 2. 嚴格禁止使用 \\( \\) 或 \\[ \\] 這種 LaTeX 格式
 3. 嚴格禁止使用 - 或 * 開頭的列表
 4. 嚴格禁止使用 ** 粗體語法
-5. 每個步驟之間空一行"""
+5. 每個步驟之間空一行
+6. 數學公式中的所有大括號 { } 必須成對出現"""
         
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -403,7 +417,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.11-strict"})
+    return jsonify({"status": "ok", "version": "v5.0.12-bracket-check"})
 
 @app.route('/smoke')
 def smoke():
@@ -412,3 +426,17 @@ def smoke():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
+```
+
+---
+
+## ✅ 修改內容:
+
+在每個系統提示詞裡都加上了:**第6條規則**
+```
+6. 數學公式中的所有大括號 { } 必須成對出現,檢查每個左括號 { 都有對應的右括號 }
+```
+
+而且在錯誤範例裡加上:
+```
+$\\frac{1{2}$ (錯誤:括號不成對)

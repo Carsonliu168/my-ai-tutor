@@ -1,12 +1,7 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.0.18-smart：智能「不懂」按鈕版
-// ✅ 功能：
-// - student(藍色) + anan(粉紅色) 對話框
-// - 文字題和圖片題都顯示「安安思考中...」
-// - 智能「不懂」按鈕：記住上一題,追蹤次數
-// - 自動包裹數學公式
-// - 完整支援繁體中文字與即時渲染
+// v5.0.19-final：修正第三次不懂邏輯
+// ✅ 功能：完整保留,只修正第三次「不懂」建議
 // ================================================
 
 // 🧠 全域變數：記住上一題和困惑次數
@@ -184,21 +179,25 @@ function sendMessage(presetText) {
     
     if (confusionCount === 1) {
       // 第1次按「不懂」→ 問哪個步驟不懂
-      if (lastQuestion) {
+      if (lastQuestion && lastQuestion !== "[圖片題目]") {
         actualMessage = `關於這題「${lastQuestion}」,我有些地方不太懂`;
+      } else if (lastQuestion === "[圖片題目]") {
+        actualMessage = "剛才那題我有些地方不太懂";
       } else {
         actualMessage = "我不懂";
       }
     } else if (confusionCount === 2) {
       // 第2次按「不懂」→ 請求換個方法
-      if (lastQuestion) {
+      if (lastQuestion && lastQuestion !== "[圖片題目]") {
         actualMessage = `這題「${lastQuestion}」我還是不太懂,可以換一個方法再教我一次嗎?`;
+      } else if (lastQuestion === "[圖片題目]") {
+        actualMessage = "剛才那題我還是不太懂,可以換一個方法再教我一次嗎?";
       } else {
         actualMessage = "我還是不懂,可以換個方法嗎?";
       }
     } else if (confusionCount >= 3) {
-      // 第3次以上按「不懂」→ 建議問老師
-      actualMessage = "我按了很多次不懂了";
+      // ✅ 第3次以上按「不懂」→ 明確建議問老師,不要再解題
+      actualMessage = "我已經問了三次還是不懂了,請你用親切的口氣建議我把這題記下來,明天去問學校老師。請不要再繼續解題了,只要給我鼓勵和建議就好";
     }
   } else if (actualMessage === "我懂了") {
     // 「懂了」按鈕 → 重置困惑計數
