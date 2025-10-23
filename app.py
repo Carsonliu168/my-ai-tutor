@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.9-stable (Restore simple OCR prompt)
+# v5.0.10-improved (Better formatting)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.9-stable)")
+    print("Database ready (v5.0.10-improved)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -94,7 +94,14 @@ def solve_with_deepseek(prompt: str) -> str:
             api_key=DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com"
         )
-        sys = "你是小學數學家教「安安」。請用繁體中文、淺白易懂的方式一步步解題，必要時用 Latex 數學公式（$...$ 或 $$...$$）。先引導思考過程，最後給出答案。"
+        sys = """你是數學小老師「安安」。請用繁體中文、淺白易懂的方式一步步解題。
+
+重要格式規則：
+1. 數學公式只能用 $...$ (行內) 或 $$...$$ (獨立行)，絕對不要用 \\( \\) 或 \\[ \\]
+2. 不要使用 Markdown 的 ** 粗體語法，直接用文字即可
+3. 適當分段，每個步驟之間空一行
+4. 先引導思考過程，最後給出答案"""
+        
         rsp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role":"system","content":sys},
@@ -110,7 +117,14 @@ def solve_with_openai(prompt: str) -> str:
     try:
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
-        sys = "你是小學數學家教「安安」。請用繁體中文、淺白易懂的方式一步步解題，必要時用 Latex 數學公式（$...$ 或 $$...$$）。先引導思考過程，最後給出答案。"
+        sys = """你是數學小老師「安安」。請用繁體中文、淺白易懂的方式一步步解題。
+
+重要格式規則：
+1. 數學公式只能用 $...$ (行內) 或 $$...$$ (獨立行)，絕對不要用 \\( \\) 或 \\[ \\]
+2. 不要使用 Markdown 的 ** 粗體語法，直接用文字即可
+3. 適當分段，每個步驟之間空一行
+4. 先引導思考過程，最後給出答案"""
+        
         rsp = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[{"role":"system","content":sys},
@@ -127,7 +141,14 @@ def solve_with_gemini(prompt: str) -> str:
         import google.generativeai as genai
         genai.configure(api_key=GOOGLE_API_KEY)
         model = genai.GenerativeModel(os.getenv("GEMINI_MODEL","gemini-1.5-flash"))
-        sys = "你是小學數學家教「安安」。請用繁體中文、淺白易懂的方式一步步解題，必要時用 Latex 數學公式（$...$ 或 $$...$$）。先引導思考過程，最後給出答案。"
+        sys = """你是數學小老師「安安」。請用繁體中文、淺白易懂的方式一步步解題。
+
+重要格式規則：
+1. 數學公式只能用 $...$ (行內) 或 $$...$$ (獨立行)，絕對不要用 \\( \\) 或 \\[ \\]
+2. 不要使用 Markdown 的 ** 粗體語法，直接用文字即可
+3. 適當分段，每個步驟之間空一行
+4. 先引導思考過程，最後給出答案"""
+        
         rsp = model.generate_content([sys, prompt])
         return rsp.text.strip()
     except Exception as e:
@@ -139,7 +160,7 @@ def solve_math(prompt: str) -> str:
     if m:
         a, b = int(m.group(1)), int(m.group(2))
         result = a * b
-        return f"好的，我們來算：{a} × {b} = **{result}**\n\n是不是很簡單呢？ 😊"
+        return f"好的，我們來算：{a} × {b} = {result}\n\n是不是很簡單呢？ 😊"
     
     if DEEPSEEK_API_KEY:
         ans = solve_with_deepseek(prompt)
@@ -176,7 +197,12 @@ def ocr_with_gemini(file_storage) -> str:
         image_data = file_storage.read()
         image = Image.open(io.BytesIO(image_data))
         
-        prompt = "請用繁體中文辨識圖片中的數學題目，然後一步步解題。數學公式請用標準的 LaTeX 格式（例如 $x^2$ 或 $$...$$）。"
+        prompt = """請用繁體中文辨識圖片中的數學題目，然後一步步解題。
+
+重要格式規則：
+1. 數學公式只能用 $...$ (行內) 或 $$...$$ (獨立行)，絕對不要用 \\( \\) 或 \\[ \\]
+2. 不要使用 Markdown 的 ** 粗體語法，直接用文字即可
+3. 適當分段，每個步驟之間空一行"""
         
         rsp = model.generate_content([prompt, image])
         print("Using Gemini OCR")
@@ -199,7 +225,12 @@ def ocr_with_openai(file_storage) -> str:
         image_data = file_storage.read()
         base64_image = base64.b64encode(image_data).decode('utf-8')
         
-        prompt = "請用繁體中文辨識圖片中的數學題目，然後一步步解題。數學公式請用標準的 LaTeX 格式（例如 $x^2$ 或 $$...$$）。"
+        prompt = """請用繁體中文辨識圖片中的數學題目，然後一步步解題。
+
+重要格式規則：
+1. 數學公式只能用 $...$ (行內) 或 $$...$$ (獨立行)，絕對不要用 \\( \\) 或 \\[ \\]
+2. 不要使用 Markdown 的 ** 粗體語法，直接用文字即可
+3. 適當分段，每個步驟之間空一行"""
         
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -323,7 +354,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.9-stable"})
+    return jsonify({"status": "ok", "version": "v5.0.10-improved"})
 
 @app.route('/smoke')
 def smoke():
