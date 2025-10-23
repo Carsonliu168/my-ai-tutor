@@ -1,15 +1,15 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.0.15-complete：完整修訂版
+// v5.0.16-complete：完整修訂版 + 思考中提示
 // ✅ 功能：
 // - student(藍色) + anan(粉紅色) 對話框
+// - 文字題和圖片題都顯示「安安思考中...」
 // - 自動包裹數學公式
 // - 自動清除多餘或未配對的 $
 // - 自動修正孤立 \left / \right
 // - 完整支援繁體中文字與即時渲染
 // - 圖片上傳功能
-// - 思考中提示
-// - 懂了/不懂按鈕
+// - 懂了/不懂按鈕(保持原樣)
 // ================================================
 document.addEventListener("DOMContentLoaded", () => {
   const chatForm = document.getElementById("chat-form");
@@ -69,6 +69,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     appendMessage("student", input);
     userInput.value = "";
+    
+    // ✅ 立即在對話框顯示「安安思考中...」
+    const thinkingMsg = document.createElement("div");
+    thinkingMsg.className = "anan";
+    thinkingMsg.innerHTML = "🤔 安安思考中...";
+    thinkingMsg.id = "thinking-message";
+    chatBox.appendChild(thinkingMsg);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    
     loadingText.style.display = "block";
 
     try {
@@ -80,6 +89,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await response.json();
       loadingText.style.display = "none";
 
+      // ✅ 移除「思考中」訊息
+      const thinkingElement = document.getElementById("thinking-message");
+      if (thinkingElement) {
+        thinkingElement.remove();
+      }
+
       if (data.reply) {
         appendMessage("anan", data.reply);
       } else {
@@ -87,6 +102,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (error) {
       loadingText.style.display = "none";
+      
+      // ✅ 移除「思考中」訊息
+      const thinkingElement = document.getElementById("thinking-message");
+      if (thinkingElement) {
+        thinkingElement.remove();
+      }
+      
       appendMessage("anan", "⚠️ 無法連線到伺服器，請稍後重試。");
     }
   });
@@ -99,6 +121,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const formData = new FormData();
     formData.append("file", file);
 
+    // ✅ 立即在對話框顯示「安安思考中...」
+    const thinkingMsg = document.createElement("div");
+    thinkingMsg.className = "anan";
+    thinkingMsg.innerHTML = "🤔 安安思考中...";
+    thinkingMsg.id = "thinking-message-upload";
+    chatBox.appendChild(thinkingMsg);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
     loadingText.style.display = "block";
 
     try {
@@ -109,6 +139,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await response.json();
       loadingText.style.display = "none";
 
+      // ✅ 移除「思考中」訊息
+      const thinkingElement = document.getElementById("thinking-message-upload");
+      if (thinkingElement) {
+        thinkingElement.remove();
+      }
+
       if (data.reply) {
         appendMessage("anan", data.reply);
       } else {
@@ -116,6 +152,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (error) {
       loadingText.style.display = "none";
+      
+      // ✅ 移除「思考中」訊息
+      const thinkingElement = document.getElementById("thinking-message-upload");
+      if (thinkingElement) {
+        thinkingElement.remove();
+      }
+      
       appendMessage("anan", "⚠️ 圖片上傳或辨識失敗。");
     }
 
@@ -141,6 +184,15 @@ function sendMessage(presetText) {
   chatBox.scrollTop = chatBox.scrollHeight;
 
   userInput.value = "";
+  
+  // ✅ 立即在對話框顯示「安安思考中...」
+  const thinkingMsg = document.createElement("div");
+  thinkingMsg.className = "anan";
+  thinkingMsg.innerHTML = "🤔 安安思考中...";
+  thinkingMsg.id = "thinking-message-preset";
+  chatBox.appendChild(thinkingMsg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+  
   loadingText.style.display = "block";
 
   fetch("/chat", {
@@ -151,6 +203,12 @@ function sendMessage(presetText) {
   .then(res => res.json())
   .then(data => {
     loadingText.style.display = "none";
+    
+    // ✅ 移除「思考中」訊息
+    const thinkingElement = document.getElementById("thinking-message-preset");
+    if (thinkingElement) {
+      thinkingElement.remove();
+    }
     
     // 顯示安安回覆（粉紅色）
     const ananMsg = document.createElement("div");
@@ -173,6 +231,13 @@ function sendMessage(presetText) {
   })
   .catch(error => {
     loadingText.style.display = "none";
+    
+    // ✅ 移除「思考中」訊息
+    const thinkingElement = document.getElementById("thinking-message-preset");
+    if (thinkingElement) {
+      thinkingElement.remove();
+    }
+    
     const errMsg = document.createElement("div");
     errMsg.className = "anan";
     errMsg.innerHTML = "⚠️ 無法連線到伺服器，請稍後重試。";
@@ -190,6 +255,14 @@ function uploadImage(input) {
   const formData = new FormData();
   formData.append("file", file);
 
+  // ✅ 立即在對話框顯示「安安思考中...」
+  const thinkingMsg = document.createElement("div");
+  thinkingMsg.className = "anan";
+  thinkingMsg.innerHTML = "🤔 安安思考中...";
+  thinkingMsg.id = "thinking-message-upload-func";
+  chatBox.appendChild(thinkingMsg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
   loadingText.style.display = "block";
 
   fetch("/upload", {
@@ -199,6 +272,12 @@ function uploadImage(input) {
   .then(res => res.json())
   .then(data => {
     loadingText.style.display = "none";
+    
+    // ✅ 移除「思考中」訊息
+    const thinkingElement = document.getElementById("thinking-message-upload-func");
+    if (thinkingElement) {
+      thinkingElement.remove();
+    }
     
     const ananMsg = document.createElement("div");
     ananMsg.className = "anan";
@@ -212,6 +291,13 @@ function uploadImage(input) {
   })
   .catch(error => {
     loadingText.style.display = "none";
+    
+    // ✅ 移除「思考中」訊息
+    const thinkingElement = document.getElementById("thinking-message-upload-func");
+    if (thinkingElement) {
+      thinkingElement.remove();
+    }
+    
     const errMsg = document.createElement("div");
     errMsg.className = "anan";
     errMsg.innerHTML = "⚠️ 圖片上傳或辨識失敗。";
