@@ -1,6 +1,6 @@
 # ================================
 # AnAn Math Tutor - Main Application
-# v5.0.12-bracket-check (Add bracket validation)
+# v5.0.13-understand (Fix understand button)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -84,7 +84,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print("Database ready (v5.0.12-bracket-check)")
+    print("Database ready (v5.0.13-understand)")
 init_db()
 
 def solve_with_deepseek(prompt: str) -> str:
@@ -103,6 +103,9 @@ def solve_with_deepseek(prompt: str) -> str:
 4. 嚴格禁止使用兩個星號或底線包圍文字,直接用普通文字
 5. 每個步驟之間空一行
 6. 數學公式中的所有大括號必須成對出現
+
+特殊回應規則:
+- 當用戶說「我懂了」時,請給予簡短熱情的鼓勵讚美,例如:「太棒了!你真聰明!繼續保持!」「很好!你學得很快!」「你好棒!就是這樣!」,不要超過30字,不要再解題或自我介紹。
 
 正確範例:
 步驟一: 設未知數為 $x$
@@ -137,6 +140,9 @@ def solve_with_openai(prompt: str) -> str:
 5. 每個步驟之間空一行
 6. 數學公式中的所有大括號必須成對出現
 
+特殊回應規則:
+- 當用戶說「我懂了」時,請給予簡短熱情的鼓勵讚美,例如:「太棒了!你真聰明!繼續保持!」「很好!你學得很快!」「你好棒!就是這樣!」,不要超過30字,不要再解題或自我介紹。
+
 正確範例:
 步驟一: 設未知數為 $x$
 我們列出方程式 $2x + 3 = 7$
@@ -170,6 +176,9 @@ def solve_with_gemini(prompt: str) -> str:
 4. 嚴格禁止使用兩個星號或底線包圍文字,直接用普通文字
 5. 每個步驟之間空一行
 6. 數學公式中的所有大括號必須成對出現
+
+特殊回應規則:
+- 當用戶說「我懂了」時,請給予簡短熱情的鼓勵讚美,例如:「太棒了!你真聰明!繼續保持!」「很好!你學得很快!」「你好棒!就是這樣!」,不要超過30字,不要再解題或自我介紹。
 
 正確範例:
 步驟一: 設未知數為 $x$
@@ -390,7 +399,7 @@ def clear():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "v5.0.12-bracket-check"})
+    return jsonify({"status": "ok", "version": "v5.0.13-understand"})
 
 @app.route('/smoke')
 def smoke():
@@ -399,3 +408,13 @@ def smoke():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
+```
+
+---
+
+## ✅ 只修改了這些地方:
+
+在三個 AI 的系統提示詞(DeepSeek, OpenAI, Gemini)裡都加上:
+```
+特殊回應規則:
+- 當用戶說「我懂了」時,請給予簡短熱情的鼓勵讚美,例如:「太棒了!你真聰明!繼續保持!」「很好!你學得很快!」「你好棒!就是這樣!」,不要超過30字,不要再解題或自我介紹。
