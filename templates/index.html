@@ -30,7 +30,7 @@
   </header>
   <main>
     <div id="chat-box" class="chat-box">
-      <div class="assistant greeting">
+      <div class="anan greeting">
         哈囉～我是安安!請輸入數學題目或拍照上傳,我會一步步陪你解出來 😊
       </div>
     </div>
@@ -41,6 +41,8 @@
           <button type="submit" class="btn send">送出</button>
           <button type="button" class="btn clear" onclick="location.href='/clear'">清除紀錄</button>
           <button type="button" class="btn upload" onclick="document.getElementById('image-upload').click()">上傳圖片題</button>
+          <button type="button" class="btn ok" onclick="sendMessage('我懂了')">懂了 👍</button>
+          <button type="button" class="btn unsure" onclick="sendMessage('我不懂')">不懂 😕</button>
         </div>
       </form>
       <input type="file" id="image-upload" style="display:none;" accept="image/*">
