@@ -4,32 +4,42 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🧮 數學小老師安安</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  
+
+  <!-- ✅ MathJax 初始化設定（請務必放在其他 script 之前） -->
   <script>
-  MathJax = {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']],
-      displayMath: [['$$', '$$'], ['\\[', '\\]']]
-    }
-  };
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      svg: { fontCache: 'global' }
+    };
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-  
+  <script id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+
+  <!-- Markdown 轉換器 -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- 樣式與主程式 -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script defer src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
+
 <body>
   <header class="header">
     <h1>🧮 數學小老師安安</h1>
     <p class="subtitle">一起學數學，讓思考變得更有趣！</p>
   </header>
+
   <main>
     <div id="chat-box" class="chat-box">
       <div class="anan greeting">
         哈囉～我是安安！請輸入數學題目或拍照上傳，我會一步步陪你解出來 😊
       </div>
     </div>
+
     <div id="input-area" class="input-area">
       <textarea id="user-input" placeholder="輸入你的題目或想問的內容..."></textarea>
       <div class="button-group">
@@ -42,6 +52,7 @@
       <input type="file" id="fileInput" style="display:none;" accept="image/*" onchange="uploadImage(this)">
     </div>
   </main>
+
   <footer>
     <div id="version-tag">v5.0.9-stable</div>
     <a href="/logout" class="logout-btn">登出</a>

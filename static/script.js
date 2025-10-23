@@ -1,13 +1,13 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.0.10-autoformat-final：MathJax 全面防呆版
+// v5.0.11-fixed：修正上傳路由問題
 // ✅ 功能：
 // - 自動包裹數學公式
 // - 自動清除多餘或未配對的 $
 // - 自動修正孤立 \left / \right
 // - 完整支援繁體中文字與即時渲染
+// - 修正圖片上傳路由與欄位名稱
 // ================================================
-
 document.addEventListener("DOMContentLoaded", () => {
   const chatForm = document.getElementById("chat-form");
   const userInput = document.getElementById("user-input");
@@ -52,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
     message.innerHTML = role === "user" ? text : autoFormatMath(text);
     chatBox.appendChild(message);
     chatBox.scrollTop = chatBox.scrollHeight;
+
     if (window.MathJax && window.MathJax.typesetPromise) {
       MathJax.typesetPromise([message]);
     }
@@ -68,19 +69,18 @@ document.addEventListener("DOMContentLoaded", () => {
     loadingText.style.display = "block";
 
     try {
-      const response = await fetch("/ask", {
+      const response = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input })
+        body: JSON.stringify({ message: input })
       });
-
       const data = await response.json();
       loadingText.style.display = "none";
 
-      if (data.error) {
-        appendMessage("assistant", "⚠️ 系統忙碌，請稍後再試。");
+      if (data.reply) {
+        appendMessage("assistant", data.reply);
       } else {
-        appendMessage("assistant", data.answer);
+        appendMessage("assistant", "⚠️ 系統忙碌，請稍後再試。");
       }
     } catch (error) {
       loadingText.style.display = "none";
@@ -94,21 +94,29 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!file) return;
 
     const formData = new FormData();
-    formData.append("image", file);
+    formData.append("file", file);  // ✅ 改成 "file"
+
     loadingText.style.display = "block";
 
     try {
-      const response = await fetch("/upload_image", {
+      const response = await fetch("/upload", {  // ✅ 改成 "/upload"
         method: "POST",
         body: formData
       });
-
       const data = await response.json();
       loadingText.style.display = "none";
-      appendMessage("assistant", data.answer);
+
+      if (data.reply) {
+        appendMessage("assistant", data.reply);
+      } else {
+        appendMessage("assistant", "⚠️ 圖片辨識失敗。");
+      }
     } catch (error) {
       loadingText.style.display = "none";
       appendMessage("assistant", "⚠️ 圖片上傳或辨識失敗。");
     }
+
+    // 清空檔案選擇器，允許重複上傳同一檔案
+    uploadInput.value = "";
   });
 });
