@@ -1,144 +1,114 @@
-// ===== Math 文字自動格式化（給 MathJax 用） =====
-function autoFormatMath(text) {
-  if (!text) return text;
+// ================================================
+// 📘 安安專案前端控制腳本
+// v5.0.10-autoformat-final：MathJax 全面防呆版
+// ✅ 功能：
+// - 自動包裹數學公式
+// - 自動清除多餘或未配對的 $
+// - 自動修正孤立 \left / \right
+// - 完整支援繁體中文字與即時渲染
+// ================================================
 
-  let t = String(text);
+document.addEventListener("DOMContentLoaded", () => {
+  const chatForm = document.getElementById("chat-form");
+  const userInput = document.getElementById("user-input");
+  const chatBox = document.getElementById("chat-box");
+  const loadingText = document.getElementById("loading-text");
+  const uploadInput = document.getElementById("image-upload");
 
-  // 1) [ ... ] → $...$  （原始後端格式）
-  t = t.replace(/\[([^\]]+)\]/g, (_, g1) => `$${g1}$`);
+  // 🧩 自動格式化公式文字
+  function autoFormatMath(text) {
+    if (!text) return text;
 
-  // 2) ( ... \times ... ) / ( ... \div ... ) 等整段包進 $...$
-  //   目的：開頭敘述中常出現的「( 46 \times 5 ) 與 ( 23 \div 2 )」
-  const opPattern = '\\\\(?:times|div|frac|sqrt|pi|le|ge)';
-  const parenRegex = new RegExp(`\\(([^()]*${opPattern}[^()]*)\\)`, 'g');
-  t = t.replace(parenRegex, (_, inner) => `$(${inner})$`);
+    // ---------- 🧹 1️⃣ 清理多餘符號 ----------
+    // 移除重複或孤立的 $ 符號
+    text = text.replace(/\$\$\$/g, "$$");
+    text = text.replace(/\$\s*\$/g, "$");
 
-  // 3) 保底：在「非 $...$ 區塊」裡遇到單顆 LaTeX 符號就包 $...$
-  //   方法：先用 $...$ 切段，僅處理非數學片段
-  const tokenRegex = /(\\frac\{[^}]+\}\{[^}]+\}|\\sqrt\{[^}]*\}|\\times|\\div|\\pi|\\le|\\ge)/g;
-  const parts = t.split(/(\$[^$]+\$)/g); // 保留分隔符
-  for (let i = 0; i < parts.length; i++) {
-    const seg = parts[i];
-    if (!seg) continue;
-    // 跳過已是 $...$ 的數學片段
-    if (seg.startsWith('$') && seg.endsWith('$')) continue;
+    // 修正多餘 $$...$$$$ 的狀況
+    text = text.replace(/\$\$([^\$]+)\$\$\$/g, "$$$1$$");
 
-    // 只處理非數學片段：把殘留的 LaTeX 符號包起來
-    parts[i] = seg.replace(tokenRegex, (m) => `$${m}$`);
+    // ---------- 🧱 2️⃣ 修正未配對的 \left / \right ----------
+    // 將孤立的 \left / \right 改為普通括號，防止報錯
+    text = text.replace(/\\left(?![({[])/g, "(");
+    text = text.replace(/\\right(?![)}\]])/g, ")");
+
+    // ---------- 🧮 3️⃣ 自動包裹公式 ----------
+    // 把 [ ... ] 包成 $...$
+    text = text.replace(/\[([^\[\]]+)\]/g, "\$$1\$");
+
+    // 把未包起來的 \frac、\sqrt、自動加上 $
+    text = text.replace(/([^$])((?:\\frac|\\sqrt|\\sin|\\cos|\\tan)[^$ ]+)/g, "$1\$$2\$");
+
+    // 把簡單的 a + b / c × d 自動包起來
+    text = text.replace(/([=：])([\d\w\s\\\+\-\*\/\(\)\.]+)([。；\)])/g, "$1\$$2\$$3");
+
+    return text;
   }
-  t = parts.join('');
 
-  return t;
-}
-
-// ====== 以下為 UI 與聊天流程 ======
-function appendMessage(role, content) {
-  const box = document.getElementById("chat-box");
-  const div = document.createElement("div");
-  div.className = role;
-  try {
-    // 對動態插入內容也先做數學自動格式化
-    const formatted = autoFormatMath(content || "");
-    div.innerHTML = marked.parse(formatted);
-  } catch (e) {
-    div.textContent = content || "";
+  // 🧠 輸出訊息至畫面
+  function appendMessage(role, text) {
+    const message = document.createElement("div");
+    message.className = role;
+    message.innerHTML = role === "user" ? text : autoFormatMath(text);
+    chatBox.appendChild(message);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      MathJax.typesetPromise([message]);
+    }
   }
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
 
-  // 重新渲染 MathJax
-  if (window.MathJax && MathJax.typesetPromise) {
-    MathJax.typesetPromise([div]).catch((err) => console.log("MathJax error:", err));
-  } else {
-    setTimeout(() => {
-      if (window.MathJax && MathJax.typesetPromise) {
-        MathJax.typesetPromise([div]).catch((err) => console.log("MathJax error:", err));
+  // ✉️ 傳送訊息
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = userInput.value.trim();
+    if (!input) return;
+
+    appendMessage("user", input);
+    userInput.value = "";
+    loadingText.style.display = "block";
+
+    try {
+      const response = await fetch("/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: input })
+      });
+
+      const data = await response.json();
+      loadingText.style.display = "none";
+
+      if (data.error) {
+        appendMessage("assistant", "⚠️ 系統忙碌，請稍後再試。");
+      } else {
+        appendMessage("assistant", data.answer);
       }
-    }, 600);
-  }
-}
+    } catch (error) {
+      loadingText.style.display = "none";
+      appendMessage("assistant", "⚠️ 無法連線到伺服器，請稍後重試。");
+    }
+  });
 
-function sendMessage(preset) {
-  const input = document.getElementById("user-input");
-  const text = (preset || input.value || "").trim();
-  if (!text) return;
-  appendMessage("student", text);
-  if (!preset) input.value = "";
-  appendMessage("anan", "安安正在思考中...");
+  // 📷 上傳圖片題
+  uploadInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  fetch("/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text })
-  })
-    .then((r) => {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    })
-    .then((data) => {
-      const msgs = document.getElementsByClassName("anan");
-      const last = msgs[msgs.length - 1];
+    const formData = new FormData();
+    formData.append("image", file);
+    loadingText.style.display = "block";
 
-      try {
-        let reply = data.reply || "(沒有回覆內容)";
-        reply = autoFormatMath(reply); // ✅ 關鍵：回覆先做數學自動格式化
-        last.innerHTML = marked.parse(reply);
-      } catch (e) {
-        last.textContent = data.reply || "(沒有回覆內容)";
-      }
+    try {
+      const response = await fetch("/upload_image", {
+        method: "POST",
+        body: formData
+      });
 
-      setTimeout(() => {
-        if (window.MathJax && MathJax.typesetPromise) {
-          MathJax.typesetPromise([last]).catch((err) => console.log("MathJax error:", err));
-        }
-      }, 300);
-    })
-    .catch((err) => {
-      const msgs = document.getElementsByClassName("anan");
-      const last = msgs[msgs.length - 1];
-      last.textContent = "系統忙碌，請稍後再試。";
-      console.error(err);
-    });
-}
-
-function uploadImage(inputEl) {
-  const f = inputEl.files && inputEl.files[0];
-  if (!f) return;
-  appendMessage("student", "(已選擇圖片：" + f.name + ")");
-  appendMessage("anan", "安安正在辨識圖片與文字...");
-
-  const fd = new FormData();
-  fd.append("file", f);
-
-  fetch("/upload", { method: "POST", body: fd })
-    .then((r) => {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    })
-    .then((data) => {
-      const msgs = document.getElementsByClassName("anan");
-      const last = msgs[msgs.length - 1];
-
-      try {
-        let reply = data.reply || "(沒有回覆內容)";
-        reply = autoFormatMath(reply); // ✅ 圖片回覆也一併處理
-        last.innerHTML = marked.parse(reply);
-      } catch (e) {
-        last.textContent = data.reply || "(沒有回覆內容)";
-      }
-
-      setTimeout(() => {
-        if (window.MathJax && MathJax.typesetPromise) {
-          MathJax.typesetPromise([last]).catch((err) => console.log("MathJax error:", err));
-        }
-      }, 300);
-
-      inputEl.value = "";
-    })
-    .catch((err) => {
-      const msgs = document.getElementsByClassName("anan");
-      const last = msgs[msgs.length - 1];
-      last.textContent = "圖片上傳/辨識失敗，請稍後再試。";
-      console.error(err);
-    });
-}
+      const data = await response.json();
+      loadingText.style.display = "none";
+      appendMessage("assistant", data.answer);
+    } catch (error) {
+      loadingText.style.display = "none";
+      appendMessage("assistant", "⚠️ 圖片上傳或辨識失敗。");
+    }
+  });
+});
