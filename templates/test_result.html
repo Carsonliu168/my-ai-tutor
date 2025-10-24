@@ -1,95 +1,77 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>問卷結果 - 數學小老師安安</title>
-    <style>
-        body { font-family: "Microsoft JhengHei", Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0; min-height: 100vh; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { text-align: center; color: white; margin-bottom: 30px; }
-        .header h1 { font-size: 2.5em; margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-        .result-card { background: white; border-radius: 20px; padding: 40px; margin-bottom: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); text-align: center; }
-        .profile-icon { font-size: 5em; margin-bottom: 20px; }
-        .profile-title { color: #333; font-size: 2em; margin-bottom: 10px; }
-        .profile-description { color: #666; font-size: 1.15em; line-height: 1.7; margin-bottom: 20px; white-space: pre-line; }
-        .score-card { background: #f8f9fa; border-radius: 15px; padding: 20px; margin: 20px 0; display: inline-block; }
-        .score-item { display: inline-block; margin: 0 20px; text-align: center; }
-        .score-value { font-size: 2em; font-weight: bold; color: #667eea; }
-        .score-label { color: #666; margin-top: 5px; }
-        .tips-section { background: #f0f4ff; border-radius: 15px; padding: 30px; margin-top: 30px; text-align: left; }
-        .tips-title { color: #333; font-size: 1.5em; margin-bottom: 20px; text-align: center; }
-        .tip-item { background: white; border-radius: 10px; padding: 15px; margin-bottom: 15px; border-left: 4px solid #667eea; }
-        .actions { text-align: center; margin-top: 26px; display: grid; grid-template-columns: 1fr; gap: 12px; }
-        .btn { display: inline-block; padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 50px; font-size: 1.05em; font-weight: bold; transition: transform 0.3s ease; }
-        .btn:hover { transform: translateY(-3px); text-decoration: none; color: white; }
-        .lead-line { text-align: center; color: #555; margin: 22px 0 6px; font-weight: 600; }
-        @media (min-width: 720px) {
-            .actions { grid-template-columns: repeat(3, 1fr); }
-        }
-        .logic-strategist { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-        .creative-visualizer { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-        .balanced-master { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-        .pill { padding: 10px 20px; border-radius: 25px; color: white; display: inline-block; }
-        .color-scheme { display: inline-block; padding: 8px 16px; background: #667eea; color: white; border-radius: 20px; font-size: 0.9em; margin-top: 10px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧠 測驗結果｜大腦探險家</title>
+  <style>
+    body {
+      font-family: "Microsoft JhengHei", sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      text-align: center;
+      padding: 60px 20px;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .card {
+      background: white;
+      padding: 40px 60px;
+      border-radius: 20px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      max-width: 600px;
+      width: 100%;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+      font-size: 28px;
+    }
+    h2 {
+      color: #ff6699;
+      margin-top: 0;
+      font-size: 24px;
+    }
+    p {
+      font-size: 18px;
+      color: #333;
+      line-height: 1.6;
+    }
+    a {
+      display: inline-block;
+      margin-top: 30px;
+      text-decoration: none;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 12px 30px;
+      border-radius: 10px;
+      font-size: 18px;
+      transition: transform 0.2s;
+    }
+    a:hover { transform: translateY(-2px); }
+    footer {
+      text-align: center;
+      color: #eee;
+      font-size: 14px;
+      margin-top: 40px;
+      line-height: 1.4;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎉 探險結果揭曉！</h1>
-            <p>恭喜你完成了大腦探險家任務！</p>
-        </div>
+  <div class="card">
+    <h1>🧠 測驗完成！</h1>
+    <h2>{{ result }}</h2>
+    <p>{{ description }}</p>
+    <a href="/">回到安安主頁開始學習</a>
+  </div>
 
-        <div class="result-card">
-            {% if profile.type == "邏輯戰略家" %}
-            <div class="profile-icon">🎯</div>
-            <div class="profile-title"><span class="pill logic-strategist">{{ profile.type }}</span></div>
-            {% elif profile.type == "創意視覺家" %}
-            <div class="profile-icon">🎨</div>
-            <div class="profile-title"><span class="pill creative-visualizer">{{ profile.type }}</span></div>
-            {% else %}
-            <div class="profile-icon">⚖️</div>
-            <div class="profile-title"><span class="pill balanced-master">{{ profile.type }}</span></div>
-            {% endif %}
-
-            <!-- 推薦文案（已採用你的最終版描述從後端帶入） -->
-            <div class="profile-description">{{ profile.description }}</div>
-
-            <div class="score-card">
-                <div class="score-item">
-                    <div class="score-value">{{ profile.logic_score }}</div>
-                    <div class="score-label">邏輯分析</div>
-                </div>
-                <div class="score-item">
-                    <div class="score-value">{{ profile.intuition_score }}</div>
-                    <div class="score-label">圖像直覺</div>
-                </div>
-            </div>
-
-            <div class="color-scheme">推薦配色：{{ profile.color_scheme }}</div>
-        </div>
-
-        <div class="tips-section">
-            <div class="tips-title">💡 你的專屬學習策略</div>
-            {% for tip in profile.learning_tips %}
-            <div class="tip-item">{{ tip }}</div>
-            {% endfor %}
-        </div>
-
-        <!-- 你的強調句（務必加入） -->
-        <p class="lead-line">💡 每位探險家都有專屬的學習路線。選擇最適合你的方案，開啟屬於你的安安冒險旅程吧！</p>
-
-        <!-- 三個方案按鈕（字數一致最終版） -->
-        <div class="actions">
-            <a href="/subscribe/basic" class="btn">⚖️ 啟動全方面學習力（NT$290/月）</a>
-            <a href="/subscribe/pro" class="btn">🎯 開啟策略思考模式（NT$390/月）</a>
-            <a href="/subscribe/vision" class="btn">🎨 體驗視覺化教學冒險（NT$490/月）</a>
-        </div>
-
-        <div style="text-align:center; margin-top: 18px;">
-            <a href="/" class="btn" style="background:#6c757d;">先回主頁看看</a>
-        </div>
-    </div>
+  <footer>
+    🧮 數學小老師安安 v5.0.22 ｜ © 2025 WeShareAI  
+    <div>登入狀態：{{ username or '未登入' }} ｜ 角色：{{ role or 'student' }}</div>
+  </footer>
 </body>
 </html>

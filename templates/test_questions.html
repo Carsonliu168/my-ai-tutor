@@ -1,0 +1,95 @@
+<!-- ✅ 完整修正版腳本 -->
+<script>
+  let currentQuest = 0;
+  const totalQuests = 7;
+  const answers = new Array(totalQuests).fill(null);
+
+  function startQuestionnaire() {
+    document.getElementById('welcomeCard').style.display = 'none';
+    document.getElementById('progressSection').style.display = 'block';
+    document.getElementById('navigation').style.display = 'flex';
+    showQuest(0);
+  }
+
+  function showQuest(index) {
+    for (let i = 0; i < totalQuests; i++) {
+      document.getElementById(`quest${i + 1}`).classList.remove('active');
+    }
+    document.getElementById(`quest${index + 1}`).classList.add('active');
+    updateProgress(index);
+    document.getElementById('prevBtn').disabled = index === 0;
+    document.getElementById('nextBtn').textContent =
+      index === totalQuests - 1 ? '完成問卷' : '下一題';
+    if (answers[index] !== null) {
+      const selectedBtn = document.querySelector(
+        `#quest${index + 1} .option-btn[data-value="${answers[index]}"]`
+      );
+      if (selectedBtn) selectOption(selectedBtn);
+    }
+    document.getElementById('nextBtn').disabled = answers[index] === null;
+  }
+
+  function updateProgress(index) {
+    const progress = ((index + 1) / totalQuests) * 100;
+    document.getElementById('progressBar').style.width = `${progress}%`;
+    document.getElementById('progressText').textContent = `${index + 1}/${totalQuests}`;
+  }
+
+  function selectOption(button) {
+    const questCard = button.closest('.quest-card');
+    questCard.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('selected'));
+    button.classList.add('selected');
+    const questIndex = parseInt(questCard.id.replace('quest', '')) - 1;
+    answers[questIndex] = button.dataset.value;
+    document.getElementById('nextBtn').disabled = false;
+  }
+
+  function nextQuest() {
+    if (currentQuest < totalQuests - 1) {
+      currentQuest++;
+      showQuest(currentQuest);
+    } else {
+      submitQuestionnaire();
+    }
+  }
+
+  function prevQuest() {
+    if (currentQuest > 0) {
+      currentQuest--;
+      showQuest(currentQuest);
+    }
+  }
+
+  async function submitQuestionnaire() {
+    if (answers.some(a => a === null)) {
+      alert('請完成所有題目！');
+      return;
+    }
+
+    try {
+      const r = await fetch('/submit_test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers })
+      });
+      const data = await r.json();
+      if (data.success) {
+        window.location.href = '/test_result?result=' + encodeURIComponent(data.result);
+      } else {
+        alert('提交失敗：' + (data.error || '未知錯誤'));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('提交問卷時發生錯誤，請稍後再試');
+    }
+  }
+
+  // ✅ 關鍵修正：確保 DOM 載入完畢後綁定事件
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.option-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        selectOption(this);
+      });
+    });
+  });
+</script>

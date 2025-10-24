@@ -30,7 +30,7 @@
         .progress-text { text-align: center; color: white; margin-bottom: 10px; font-weight: bold; }
         .welcome-card { background: white; border-radius: 20px; padding: 40px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
         .welcome-icon { font-size: 4em; margin-bottom: 20px; }
-        .start-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 40px; font-size: 1.2em; border-radius: 50px; cursor: button; margin-top: 20px; transition: transform 0.3s ease; }
+        .start-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 40px; font-size: 1.2em; border-radius: 50px; cursor: pointer; margin-top: 20px; transition: transform 0.3s ease; }
         .start-btn:hover { transform: translateY(-3px) scale(1.05); }
     </style>
 </head>
@@ -58,8 +58,8 @@
             </div>
         </div>
 
-        <form id="questionnaireForm">
-            <!-- 7 題（略，與你提供版本一致） -->
+        <form id="questionnaireForm" novalidate>
+            <!-- 7 題（與你提供版本一致） -->
             <!-- 任務1 -->
             <div class="quest-card" id="quest1">
                 <div class="quest-title">🚀 任務一：解開古代迷宮石陣</div>
@@ -180,6 +180,7 @@
         </form>
     </div>
 
+    <!-- ✅ v5.0.21-fixed：修正提交端點與結果導向 -->
     <script>
         let currentQuest = 0;
         const totalQuests = 7;
@@ -194,32 +195,42 @@
 
         function showQuest(index) {
             for (let i = 0; i < totalQuests; i++) {
-                document.getElementById(`quest${i + 1}`).classList.remove('active');
+                const el = document.getElementById(`quest${i + 1}`);
+                if (el) el.classList.remove('active');
             }
-            document.getElementById(`quest${index + 1}`).classList.add('active');
+            const current = document.getElementById(`quest${index + 1}`);
+            if (current) current.classList.add('active');
+
             updateProgress(index);
-            document.getElementById('prevBtn').disabled = index === 0;
-            document.getElementById('nextBtn').textContent = (index === totalQuests - 1) ? '完成問卷' : '下一題';
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            if (prevBtn) prevBtn.disabled = index === 0;
+            if (nextBtn) nextBtn.textContent = (index === totalQuests - 1) ? '完成問卷' : '下一題';
+
             if (answers[index] !== null) {
                 const selectedBtn = document.querySelector(`#quest${index + 1} .option-btn[data-value="${answers[index]}"]`);
                 if (selectedBtn) selectOption(selectedBtn);
             }
-            document.getElementById('nextBtn').disabled = (answers[index] === null);
+            if (nextBtn) nextBtn.disabled = (answers[index] === null);
         }
 
         function updateProgress(index) {
             const progress = ((index + 1) / totalQuests) * 100;
-            document.getElementById('progressBar').style.width = `${progress}%`;
-            document.getElementById('progressText').textContent = `${index + 1}/${totalQuests}`;
+            const bar = document.getElementById('progressBar');
+            const text = document.getElementById('progressText');
+            if (bar) bar.style.width = `${progress}%`;
+            if (text) text.textContent = `${index + 1}/${totalQuests}`;
         }
 
         function selectOption(button) {
             const questCard = button.closest('.quest-card');
+            if (!questCard) return;
             questCard.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('selected'));
             button.classList.add('selected');
             const questIndex = parseInt(questCard.id.replace('quest', '')) - 1;
             answers[questIndex] = button.dataset.value;
-            document.getElementById('nextBtn').disabled = false;
+            const nextBtn = document.getElementById('nextBtn');
+            if (nextBtn) nextBtn.disabled = false;
         }
 
         function nextQuest() {
@@ -240,19 +251,21 @@
 
         async function submitQuestionnaire() {
             if (answers.some(a => a === null)) {
-                alert('請完成所有題目！'); return;
+                alert('請完成所有題目！'); 
+                return;
             }
             try {
-                const r = await fetch('/submit_questionnaire', {
+                const r = await fetch('/submit_test', {   // ✅ 修正端點
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ answers })
                 });
                 const data = await r.json();
-                if (data.success) {
-                    window.location.href = '/questionnaire_result';
+                if (data && data.success) {
+                    // ✅ 修正導向，帶上結果參數
+                    window.location.href = '/test_result?result=' + encodeURIComponent(data.result || '');
                 } else {
-                    alert('提交失敗：' + (data.error || '未知錯誤'));
+                    alert('提交失敗：' + ((data && data.error) || '未知錯誤'));
                 }
             } catch (e) {
                 console.error(e);

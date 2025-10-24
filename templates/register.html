@@ -1,79 +1,136 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>註冊 - 數學小老師安安</title>
-    <style>
-        body { 
-            font-family: "Microsoft JhengHei", Arial, sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0; 
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .container { background: white; border-radius: 20px; padding: 40px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        .logo { text-align: center; margin-bottom: 30px; }
-        .logo h1 { color: #333; margin: 0; font-size: 28px; }
-        .logo .icon { font-size: 40px; display: block; margin-bottom: 10px; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; color: #555; font-weight: bold; }
-        input[type="text"], input[type="email"], input[type="password"] { width: 100%; padding: 12px 15px; border: 2px solid #e1e5e9; border-radius: 10px; font-size: 16px; box-sizing: border-box; transition: border-color 0.3s; }
-        input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus { border-color: #667eea; outline: none; }
-        .btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.2s; }
-        .btn:hover { transform: translateY(-2px); }
-        .links { text-align: center; margin-top: 20px; }
-        .links a { color: #667eea; text-decoration: none; }
-        .links a:hover { text-decoration: underline; }
-        .error { background: #ffe6e6; color: #d63384; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; border-left: 4px solid #d63384; }
-        .features { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 30px; }
-        .features h3 { color: #333; margin-top: 0; }
-        .features ul { padding-left: 20px; color: #666; }
-        .features li { margin-bottom: 8px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>註冊 - 數學小老師安安</title>
+  <style>
+    body {
+      font-family: "Microsoft JhengHei", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+      margin-bottom: 30px;
+    }
+    .logo { text-align: center; margin-bottom: 30px; }
+    .logo h1 { color: #333; margin: 0; font-size: 28px; }
+    .logo .icon { font-size: 40px; display: block; margin-bottom: 10px; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; color: #555; font-weight: bold; }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e1e5e9;
+      border-radius: 10px;
+      font-size: 16px;
+      box-sizing: border-box;
+      transition: border-color 0.3s;
+    }
+    input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
+      border-color: #667eea;
+      outline: none;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .links { text-align: center; margin-top: 20px; }
+    .links a { color: #667eea; text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+    .error {
+      background: #ffe6e6;
+      color: #d63384;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+      border-left: 4px solid #d63384;
+    }
+    .features {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 30px;
+    }
+    .features h3 { color: #333; margin-top: 0; }
+    .features ul { padding-left: 20px; color: #666; }
+    .features li { margin-bottom: 8px; }
+
+    footer {
+      text-align: center;
+      color: #eee;
+      font-size: 14px;
+      padding: 10px;
+      line-height: 1.4;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">
-            <span class="icon">🧮</span>
-            <h1>註冊安安帳號</h1>
-        </div>
-
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-
-        <form method="POST">
-            <div class="form-group">
-                <label for="username">用戶名</label>
-                <input type="text" id="username" name="username" required placeholder="請輸入用戶名">
-            </div>
-            <div class="form-group">
-                <label for="email">電子郵件</label>
-                <input type="email" id="email" name="email" required placeholder="請輸入電子郵件">
-            </div>
-            <div class="form-group">
-                <label for="password">密碼</label>
-                <input type="password" id="password" name="password" required placeholder="請輸入密碼（至少6位）">
-            </div>
-            <button type="submit" class="btn">註冊帳號</button>
-        </form>
-        
-        <div class="links">
-            <p>已經有帳號？ <a href="/login">立即登入</a></p>
-        </div>
-        
-        <div class="features">
-            <h3>🎯 註冊後你可以：</h3>
-            <ul>
-                <li>解鎖個人化學習風格分析</li>
-                <li>獲得專屬的學習策略建議</li>
-                <li>保存你的學習進度和對話紀錄</li>
-                <li>體驗更智慧的數學學習陪伴</li>
-            </ul>
-        </div>
+  <div class="container">
+    <div class="logo">
+      <span class="icon">🧮</span>
+      <h1>註冊安安帳號</h1>
     </div>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <div class="form-group">
+        <label for="username">用戶名</label>
+        <input type="text" id="username" name="username" required placeholder="請輸入用戶名">
+      </div>
+      <div class="form-group">
+        <label for="email">電子郵件</label>
+        <input type="email" id="email" name="email" required placeholder="請輸入電子郵件">
+      </div>
+      <div class="form-group">
+        <label for="password">密碼</label>
+        <input type="password" id="password" name="password" required placeholder="請輸入密碼（至少6位）">
+      </div>
+      <button type="submit" class="btn">註冊帳號</button>
+    </form>
+
+    <div class="links">
+      <p>已經有帳號？ <a href="/login">立即登入</a></p>
+    </div>
+
+    <div class="features">
+      <h3>🎯 註冊後你可以：</h3>
+      <ul>
+        <li>解鎖個人化學習風格分析</li>
+        <li>獲得專屬的學習策略建議</li>
+        <li>保存你的學習進度和對話紀錄</li>
+        <li>體驗更智慧的數學學習陪伴</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    🧮 數學小老師安安 v5.0.22 ｜ © 2025 WeShareAI  
+    <div>登入狀態：{{ username or '未登入' }} ｜ 角色：{{ role or 'student' }}</div>
+  </footer>
 </body>
 </html>
