@@ -1,10 +1,14 @@
 # ==================================================
 # 📘 數學小老師安安主程式 app.py
-# v5.0.25-stable-realAI：全功能整合 + DeepSeek/OpenAI 真實串接 + UTF-8 完整支援
+# v5.0.26-dialog-memory-fix-full：保留全功能；強化 /chat 對話記憶 + 分段教學
+# 變更重點：
+# 1) 同題對話記憶：未答對不跳題，僅在答對時才清除 last_problem
+# 2) 分段輸出：以 \n\n 斷行，保持教學口吻
+# 3) 僅在無待答題目時，才呼叫 DeepSeek →（備援）OpenAI
 # ==================================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
-import os, json, sqlite3, bcrypt, requests
+import os, json, sqlite3, bcrypt, requests, re, random
 from datetime import datetime, timedelta
 
 # -------------------------------
@@ -152,7 +156,7 @@ def home():
         return render_template("index.html", username=username, role=role)
 
 # -------------------------------
-# ✅ 認知測驗頁面與提交
+# ✅ 認知測驗頁面與提交（保持原狀）
 # -------------------------------
 @app.route("/cognitive_test")
 def cognitive_test():
@@ -199,49 +203,160 @@ def test_result():
     username = session.get("username", "未知使用者")
     return render_template("test_result.html", username=username, result=result, description=description)
 
+# -------------------------------------------------
+# 🧠 四則互動：同題記憶 + 分段教學（新增/修正）
+# -------------------------------------------------
+ARITH_REGEX = re.compile(r'^\s*(\d+)\s*([+\-×x*/÷])\s*(\d+)\s*=?\s*$')
+
+def _normalize_op(op: str) -> str:
+    return {'x': '×', '*': '×', '/': '÷'}.get(op, op)
+
+def _calc(a: int, op: str, b: int):
+    if op == '+':
+        return a + b
+    if op == '-':
+        return a - b
+    if op == '×':
+        return a * b
+    if op == '÷':
+        return None if b == 0 else a / b
+    return None
+
+def _try_parse_equation(text: str):
+    m = ARITH_REGEX.match(text)
+    if not m:
+        return None
+    a, op, b = int(m.group(1)), _normalize_op(m.group(2)), int(m.group(3))
+    return (a, op, b)
+
+def _try_parse_number(text: str):
+    t = (text or "").strip()
+    if re.fullmatch(r'^[+-]?\d+(\.\d+)?$', t):
+        try:
+            return int(t)
+        except:
+            return float(t)
+    return None
+
+def _remember_problem(a: int, op: str, b: int):
+    session.permanent = True
+    session['last_problem'] = {'a': a, 'op': op, 'b': b}
+    session.modified = True
+
+def _peek_problem():
+    return session.get('last_problem')
+
+def _clear_problem():
+    session.pop('last_problem', None)
+    session.modified = True
+
+def _almost_equal(x, y, tol=1e-9):
+    try:
+        return abs(float(x) - float(y)) < tol
+    except:
+        return x == y
+
 # -------------------------------
 # ✅ 聊天 / 清除 / 上傳
 # -------------------------------
 @app.route("/chat", methods=["POST"])
 def chat():
+    """
+    規則：
+    1) 輸入像「3+5=」→ 視為新題目，記錄 last_problem，回分段引導，不直接給答案
+    2) 若有未完成題目且輸入為數字 → 判斷正誤
+       - 答對：只給讚美（短句），清除 last_problem
+       - 答錯：給精準提示，不跳題、不清除 last_problem
+    3) 其他情況（無題或非數字）→ 交給 DeepSeek（失敗則 OpenAI 備援）
+    """
     data = request.get_json(silent=True) or {}
     user_input = (data.get("message") or "").strip()
     if not user_input:
         return jsonify({"reply": "請輸入題目或問題內容喔～"})
 
+    # 1) 是否為新題目（算式）
+    parsed = _try_parse_equation(user_input)
+    if parsed:
+        a, op, b = parsed
+        _remember_problem(a, op, b)
+        reply = (
+            "好，我們來一步步思考這個問題！\n\n"
+            f"題目是：{a} {op} {b}\n\n"
+            "👉 請你直接輸入「答案的數字」就好（例如：8）。我會立刻告訴你對不對。"
+        )
+        return jsonify({"reply": reply})
+
+    # 2) 是否正在等待答案 + 使用者回了數字
+    prob = _peek_problem()
+    user_num = _try_parse_number(user_input)
+    if prob and user_num is not None:
+        a, op, b = prob['a'], prob['op'], prob['b']
+        correct = _calc(a, op, b)
+
+        if correct is None:
+            #（例如除以 0）
+            _clear_problem()
+            return jsonify({"reply": "這題算式有問題（可能是除以 0），我們換一題吧！"})
+
+        if _almost_equal(user_num, correct):
+            _clear_problem()
+            praise = random.choice(["太棒了！", "答對囉！", "漂亮！就是這個答案！", "很棒，繼續加油！"])
+            return jsonify({"reply": praise})
+        else:
+            # 答錯：給精準提示，不清題
+            if op == '+':
+                tip = f"提示：從 {a} 往後數 {b} 步：{a+1}、{a+2}、…，最後一個數字就是答案。"
+            elif op == '-':
+                tip = f"提示：從 {a} 往前退 {b} 步：{a-1}、{a-2}、…，停下來的數字就是答案。"
+            elif op == '×':
+                tip = f"提示：想像有 {a} 組，每組 {b} 個；或做 {a} 次加法，每次加 {b}。"
+            else:  # '÷'
+                tip = f"提示：把 {a} 平分成 {b} 份，想像平均分給 {b} 個人，每人拿到一樣多。"
+
+            reply = (
+                "這次不對喔～再想想看。\n\n"
+                f"{tip}\n\n"
+                "👉 再試一次，直接輸入你的答案數字。"
+            )
+            return jsonify({"reply": reply})
+
+    # 3) 其他情況：沒有待解題 or 輸入不是數字 → 交給 AI 模型
+    user_text = user_input
+
+    # DeepSeek 主模型
     try:
         headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "你是台灣小學生的數學小老師安安，用繁體中文蘇格拉底式教學。"},
-                {"role": "user", "content": user_input}
+                {"role": "system", "content": "你是台灣小學生的數學小老師安安，用繁體中文蘇格拉底式教學。回覆請保持分段與條列。"},
+                {"role": "user", "content": user_text}
             ],
             "temperature": 0.7
         }
         r = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
         if r.status_code == 200:
             data = r.json()
-            reply = data["choices"][0]["message"]["content"].strip()
+            reply = (data["choices"][0]["message"]["content"] or "").strip()
         else:
-            raise Exception("DeepSeek failed")
-
+            raise Exception(f"DeepSeek failed: {r.status_code}")
     except Exception:
+        # OpenAI 備援
         try:
             headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
             payload = {
                 "model": "gpt-4o-mini",
                 "messages": [
-                    {"role": "system", "content": "你是台灣小學生的數學小老師安安，用繁體中文蘇格拉底式教學。"},
-                    {"role": "user", "content": user_input}
+                    {"role": "system", "content": "你是台灣小學生的數學小老師安安，用繁體中文蘇格拉底式教學。回覆請保持分段與條列。"},
+                    {"role": "user", "content": user_text}
                 ]
             }
             r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
             if r2.status_code == 200:
-                data = r2.json()
-                reply = data["choices"][0]["message"]["content"].strip()
+                data2 = r2.json()
+                reply = (data2["choices"][0]["message"]["content"] or "").strip()
             else:
-                reply = f"⚠️ 備援模型無回覆（{r2.status_code}）"
+                reply = f"⚠️ 備援模型無回覆（{r2.status_code}）。"
         except Exception:
             reply = "⚠️ 系統忙碌中，請稍後再試。"
 
@@ -249,7 +364,9 @@ def chat():
 
 @app.route("/clear")
 def clear():
+    # 保持你原有邏輯，同時把等待中的題目也清掉（避免卡住）
     session.pop("records", None)
+    session.pop("last_problem", None)
     return redirect("/")
 
 @app.route("/upload", methods=["POST"])
