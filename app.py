@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.7.10-dialogfix：分段排版 + 懂了/不懂邏輯優化
+# v4.7.11-reteach：加入「我不懂」多階段再教邏輯
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session
@@ -56,17 +56,15 @@ def seed_admin():
     conn.close()
 
 seed_admin()
-print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.10)")
+print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.11)")
 
 # -----------------------------------
 # 🧩 文字格式化：分段排版
 # -----------------------------------
 def format_ai_reply(text):
-    """把 AI 的回答轉成分段 HTML"""
-    if not text:
-        return text
-    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)  # 移除1.2.3.
-    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')  # 轉換段落
+    if not text: return text
+    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
+    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
     return text.strip()
 
 # -----------------------------------
@@ -161,17 +159,18 @@ def login():
         conn.close()
         if user:
             session["user"] = username
+            session["confusion_count"] = 0
             return redirect("/")
         return render_template("login.html", error="帳號或密碼錯誤，請再試一次。")
     return render_template("login.html")
 
 @app.route("/logout")
 def logout():
-    session.pop("user", None)
+    session.clear()
     return redirect("/login")
 
 # -----------------------------------
-# 🗨️ 聊天主頁
+# 🗨️ 主互動邏輯
 # -----------------------------------
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -180,8 +179,9 @@ def home():
 
     if request.method == "POST":
         msg = request.form.get("message", "").strip()
+        confusion_count = session.get("confusion_count", 0)
 
-        # ✅ 判斷懂了／不懂邏輯
+        # ✅ 學生按「我懂了」
         if "懂了" in msg:
             praise_list = [
                 "太棒了！你真的很努力 👍",
@@ -192,20 +192,34 @@ def home():
             reply = random.choice(praise_list)
             session["current_problem"] = None
             session["in_progress"] = False
+            session["confusion_count"] = 0
             return jsonify({"reply": reply})
 
+        # ✅ 學生按「我不懂」
         if "不懂" in msg:
             if session.get("current_problem"):
-                reply = "沒關係，我們再一起看看這一題的重點吧～"
+                confusion_count += 1
+                session["confusion_count"] = confusion_count
+
+                if confusion_count == 1:
+                    followup_prompt = f"學生說他不太懂這題「{session['current_problem']}」，請換個角度、舉例或更簡單的方式再教一次。"
+                    reply = ask_anan(followup_prompt, mode='direct')
+                elif confusion_count == 2:
+                    followup_prompt = f"學生第二次說他還是不懂這題「{session['current_problem']}」，請再用不同的方式簡短解釋，語氣更鼓勵。"
+                    reply = ask_anan(followup_prompt, mode='direct')
+                else:
+                    reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
+                reply = format_ai_reply(reply)
             else:
                 reply = "沒問題，我們可以換一題或再問別的問題喔～"
             return jsonify({"reply": reply})
 
-        # ✅ 一般提問
+        # ✅ 一般提問 → 新題目
         reply = ask_anan(msg, mode="socratic")
         reply = format_ai_reply(reply)
         session["current_problem"] = msg
         session["in_progress"] = True
+        session["confusion_count"] = 0
 
         # 寫入紀錄
         conn = sqlite3.connect(DB_PATH)
@@ -226,7 +240,7 @@ def home():
     return render_template("index.html")
 
 # -----------------------------------
-# 🧹 清除 session
+# 🧹 清除
 # -----------------------------------
 @app.route("/clear")
 def clear():
@@ -234,21 +248,9 @@ def clear():
     return redirect("/")
 
 # -----------------------------------
-# 📩 學生回饋
-# -----------------------------------
-@app.route("/feedback", methods=["POST"])
-def feedback():
-    data = request.get_json(silent=True) or {}
-    fb = data.get("feedback", "")
-    if fb == "understood":
-        return jsonify({"reply": "太棒了～安安替你開心 💪"})
-    if fb == "confused":
-        return jsonify({"reply": "沒關係，我再換個方式說一次，記得抓住關鍵公式喔～"})
-    return jsonify({"reply": "收到你的回饋，謝謝！"})
-
-# -----------------------------------
 # 🚀 啟動
 # -----------------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
+    print("🚀 安安 v4.7.11-reteach 啟動完成")
     app.run(host="0.0.0.0", port=port)
