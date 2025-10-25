@@ -1,94 +1,157 @@
-// ================================
-// 📘 安安前端互動邏輯 script.js
-// v4.8.6
-// ================================
+// ================================================
+// 📘 安安專案前端控制腳本
+// v5.0.20-dialogsync：修正懂了/不懂同步 & 分段顯示
+// ================================================
 
-document.addEventListener("DOMContentLoaded", function () {
+let lastQuestion = "";
+let confusionCount = 0;
+
+document.addEventListener("DOMContentLoaded", () => {
+  const chatForm = document.getElementById("chat-form");
+  const userInput = document.getElementById("user-input");
   const chatBox = document.getElementById("chat-box");
-  const input = document.getElementById("user-input");
-  const sendBtn = document.getElementById("send-btn");
-  const uploadBtn = document.getElementById("upload-btn");
-  const understoodBtn = document.getElementById("understood-btn");
-  const confusedBtn = document.getElementById("confused-btn");
+  const loadingText = document.getElementById("loading-text");
+  const uploadInput = document.getElementById("image-upload");
 
-  function appendMessage(sender, message) {
-    const div = document.createElement("div");
-    div.className = "msg " + sender;
-    div.innerHTML = message;
-    chatBox.appendChild(div);
-    chatBox.scrollTop = chatBox.scrollHeight;
-    if (window.MathJax) MathJax.typesetPromise();
+  function autoFormatMath(text) {
+    if (!text) return text;
+    text = text.replace(/\$\$\$/g, "$$");
+    text = text.replace(/\$\s*\$/g, "$");
+    text = text.replace(/\$\$([^\$]+)\$\$\$/g, "$$$1$$");
+    text = text.replace(/\\left(?![({[])/g, "(");
+    text = text.replace(/\\right(?![)}\]])/g, ")");
+    text = text.replace(/\[([^\[\]]+)\]/g, "\$$1\$");
+    text = text.replace(/([^$])((?:\\frac|\\sqrt|\\sin|\\cos|\\tan)[^$ ]+)/g, "$1\$$2\$");
+    text = text.replace(/([=：])([\d\w\s\\\+\-\*\/\(\)\.]+)([。；\)])/g, "$1\$$2\$$3");
+    return text;
   }
 
-  async function sendToBackend(text) {
-    appendMessage("user", `<b>👤 你：</b> ${text}`);
-    input.value = "";
-    appendMessage("anan", `<i>安安正在思考中...</i>`);
+  function appendMessage(role, text) {
+    const message = document.createElement("div");
+    message.className = role;
+    message.innerHTML = role === "student" ? text : autoFormatMath(text);
+    chatBox.appendChild(message);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      MathJax.typesetPromise([message]);
+    }
+  }
+
+  // ✉️ 送出自輸入的訊息
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = userInput.value.trim();
+    if (!input) return;
+
+    lastQuestion = input;
+    confusionCount = 0;
+
+    appendMessage("student", input);
+    userInput.value = "";
+
+    const thinkingMsg = document.createElement("div");
+    thinkingMsg.className = "anan";
+    thinkingMsg.innerHTML = "🤔 安安思考中...";
+    thinkingMsg.id = "thinking-message";
+    chatBox.appendChild(thinkingMsg);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    loadingText.style.display = "block";
 
     try {
-      const body = new URLSearchParams();
-      body.append("message", text);
+      const response = await fetch("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `message=${encodeURIComponent(input)}`
+      });
+      const data = await response.json();
+      loadingText.style.display = "none";
+      document.getElementById("thinking-message")?.remove();
 
+      appendMessage("anan", data.reply || "⚠️ 系統忙碌，請稍後再試。");
+    } catch (error) {
+      loadingText.style.display = "none";
+      document.getElementById("thinking-message")?.remove();
+      appendMessage("anan", "⚠️ 無法連線到伺服器，請稍後重試。");
+    }
+  });
+
+  // ✉️ 給「我懂了」「我不懂」按鈕
+  window.sendMessage = async function (presetText) {
+    let message = presetText;
+    if (!message) return;
+
+    // 智能「不懂」邏輯
+    if (message === "我不懂") {
+      confusionCount++;
+      if (confusionCount === 1) {
+        message = lastQuestion ? `這題「${lastQuestion}」我有點不太懂。` : "我不懂";
+      } else if (confusionCount === 2) {
+        message = lastQuestion ? `「${lastQuestion}」我還是不太懂，能換個方法再教一次嗎？` : "我還是不太懂。";
+      } else if (confusionCount >= 3) {
+        message = "我已經問了三次還是不懂，請你親切地建議我記下這題去問老師，不要再繼續講解。";
+      }
+    } else if (message === "我懂了") {
+      confusionCount = 0;
+    } else {
+      lastQuestion = message;
+      confusionCount = 0;
+    }
+
+    appendMessage("student", presetText);
+    const thinking = document.createElement("div");
+    thinking.className = "anan";
+    thinking.innerHTML = "🤔 安安思考中...";
+    thinking.id = "thinking-message-btn";
+    chatBox.appendChild(thinking);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    loadingText.style.display = "block";
+
+    try {
       const res = await fetch("/", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body
+        body: `message=${encodeURIComponent(message)}`
       });
       const data = await res.json();
-      chatBox.lastChild.remove();
-      appendMessage("anan", `<b>🧮 安安：</b> ${data.reply}`);
-    } catch (e) {
-      chatBox.lastChild.remove();
-      appendMessage("anan", `<b>⚠️ 系統忙碌，請稍後再試。</b>`);
+      loadingText.style.display = "none";
+      document.getElementById("thinking-message-btn")?.remove();
+
+      appendMessage("anan", data.reply || "⚠️ 系統忙碌，請稍後再試。");
+    } catch (error) {
+      loadingText.style.display = "none";
+      document.getElementById("thinking-message-btn")?.remove();
+      appendMessage("anan", "⚠️ 無法連線到伺服器，請稍後重試。");
     }
-  }
+  };
 
-  // 送出
-  sendBtn.addEventListener("click", () => {
-    const msg = (input.value || "").trim();
-    if (msg) sendToBackend(msg);
-  });
+  // 📷 上傳圖片題
+  uploadInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    lastQuestion = "[圖片題目]";
+    confusionCount = 0;
 
-  // Enter 快捷送出
-  input.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      sendBtn.click();
+    const thinking = document.createElement("div");
+    thinking.className = "anan";
+    thinking.innerHTML = "🤔 安安思考中...";
+    thinking.id = "thinking-upload";
+    chatBox.appendChild(thinking);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    loadingText.style.display = "block";
+
+    try {
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      loadingText.style.display = "none";
+      document.getElementById("thinking-upload")?.remove();
+      appendMessage("anan", data.reply || "⚠️ 圖片辨識失敗。");
+    } catch (err) {
+      loadingText.style.display = "none";
+      document.getElementById("thinking-upload")?.remove();
+      appendMessage("anan", "⚠️ 圖片上傳或辨識失敗。");
     }
+    uploadInput.value = "";
   });
-
-  // 懂了 / 不懂
-  understoodBtn.addEventListener("click", () => sendToBackend("我懂了"));
-  confusedBtn.addEventListener("click", () => sendToBackend("我不懂"));
-
-  // 圖片上傳（/analyze_image）
-  uploadBtn.addEventListener("click", async () => {
-    const picker = document.createElement("input");
-    picker.type = "file";
-    picker.accept = "image/*";
-    picker.onchange = async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-
-      appendMessage("user", `📷 上傳圖片：${file.name}`);
-      appendMessage("anan", `<i>安安正在看這張圖片題喔...</i>`);
-
-      const formData = new FormData();
-      formData.append("image", file);
-
-      try {
-        const res = await fetch("/analyze_image", { method: "POST", body: formData });
-        const data = await res.json();
-        chatBox.lastChild.remove();
-        appendMessage("anan", `<b>🧮 安安：</b> ${data.reply}`);
-      } catch (err) {
-        chatBox.lastChild.remove();
-        appendMessage("anan", `<b>⚠️ 圖片辨識失敗，請稍後再試。</b>`);
-      }
-    };
-    picker.click();
-  });
-
-  // 前端歡迎詞（非模型）
-  appendMessage("anan", "👋 安安：已登入成功。直接輸入題目，或點「不懂 / 懂了 / 上傳圖片題」。");
 });
