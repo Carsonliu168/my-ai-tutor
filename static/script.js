@@ -1,6 +1,6 @@
 // ================================
 // 📘 安安前端互動邏輯 script.js
-// v4.8.0-restored (POST "/") + Vision upload
+// v4.8.6
 // ================================
 
 document.addEventListener("DOMContentLoaded", function () {

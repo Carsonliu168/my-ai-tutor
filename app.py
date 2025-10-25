@@ -1,9 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.0-cognitive-secure-restored+vision
-# - 保留原 v4.8.0 登入/教學/三段式邏輯
-# - 加回 /analyze_image 圖片題辨識（Gemini）
-# - 內建預設帳號（沒設環境變數也能登入）
+# v4.8.6-stable (login + text chat + vision)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -81,17 +78,16 @@ def seed_accounts():
             (DEMO_USER, hashed, "student")
         )
         print(f"✅ 已建立示範帳號：{DEMO_USER} / 密碼已隱藏")
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.0-cognitive-secure-restored+vision）")
+print("✅ [安安] 資料庫就緒（v4.8.6-stable）")
 
-# ===== 文字格式化 =====
+# ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
     if not text: return text
     text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
-    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')  # ← 正確：用 <br>
     text = re.sub(r'\$([A-Za-z0-9])\$', r'\1', text)
     return text.strip()
 
@@ -193,8 +189,7 @@ def login():
                 conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
                 c.execute("UPDATE users SET password=? WHERE username=?", (new_hash, username))
-                conn.commit()
-                conn.close()
+                conn.commit(); conn.close()
                 ok = True
 
         if ok:
@@ -220,7 +215,7 @@ def home():
         return jsonify({"reply": "⚠️ 請先登入後再使用安安老師喔～"})
 
     if request.method == "POST":
-        msg = request.form.get("message", "").strip()
+        msg = (request.form.get("message") or "").strip()
         confusion_count = session.get("confusion_count", 0)
 
         if "懂了" in msg:
@@ -249,19 +244,19 @@ def home():
                 reply = "沒問題，我們可以換一題或再問別的問題喔～"
             return jsonify({"reply": format_ai_reply(reply)})
 
-        reply = ask_anan(msg, mode="socratic")
-        reply = format_ai_reply(reply)
+        # 一般題目 → 模型
+        reply = format_ai_reply(ask_anan(msg, mode="socratic"))
         session["current_problem"] = msg
         session["confusion_count"] = 0
 
+        # 寫入紀錄
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
             "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
             (str(uuid.uuid4()), session["user"], msg, reply, 1, datetime.now().isoformat()),
         )
-        conn.commit()
-        conn.close()
+        conn.commit(); conn.close()
         return jsonify({"reply": reply})
 
     return render_template("index.html", username=session.get("user"), role=session.get("role"))
@@ -294,9 +289,9 @@ def analyze_image():
 
         img_b64 = base64.b64encode(file.read()).decode("utf-8")
 
-        # 使用 Gemini 1.5 Flash 辨識（文字+圖片）
         if not gemini_api_key:
             return jsonify({"reply": "⚠️ 未設定 GEMINI_API_KEY，無法辨識圖片。"})
+
         headers = {"Content-Type": "application/json"}
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
         payload = {
@@ -319,23 +314,19 @@ def analyze_image():
 
         reply = format_ai_reply(normalize_math_terms(reply))
 
-        # 寫入紀錄
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
             "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
             (str(uuid.uuid4()), session["user"], "[圖片題上傳]", reply, 1, datetime.now().isoformat()),
         )
-        conn.commit()
-        conn.close()
-
+        conn.commit(); conn.close()
         return jsonify({"reply": reply})
     except Exception as e:
         print("⚠️ analyze_image 錯誤：", e)
         return jsonify({"reply": "⚠️ 圖片辨識失敗，請稍後再試。"})
 
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.8.0-cognitive-secure-restored+vision 啟動完成")
+    print("🚀 安安 v4.8.6-stable 啟動完成")
     app.run(host="0.0.0.0", port=port)

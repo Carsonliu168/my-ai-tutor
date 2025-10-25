@@ -5,25 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>登入 - 數學小老師安安</title>
   <style>
-    body {
-      font-family: "Microsoft JhengHei", Arial, sans-serif;
-      background: linear-gradient(135deg,#f0f8ff 0%,#e6f3ff 100%);
-      display: flex; justify-content: center; align-items: center;
-      height: 100vh; margin: 0;
-    }
-    .box {
-      background: #fff; padding: 30px; border-radius: 16px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      width: 300px; text-align: center;
-    }
-    input { width:100%; margin:8px 0; padding:10px; border-radius:6px; border:1px solid #ccc; }
-    button { background:#ff6b81; color:white; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; }
-    button:hover { background:#ff4d68; }
-    .error { color:red; margin-top:10px; }
+    body {font-family:"Microsoft JhengHei",Arial,sans-serif;background:linear-gradient(135deg,#f0f8ff 0%,#e6f3ff 100%);display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}
+    .login-box {background:#fff;padding:30px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.1);width:300px;text-align:center;}
+    h2 {color:#2c3e50;margin-bottom:20px;}
+    input[type=text], input[type=password] {width:100%;padding:10px;margin:8px 0;border:1px solid #ccc;border-radius:6px;font-size:16px;}
+    button {background-color:#4c8bf5;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:10px;}
+    button:hover {background-color:#2f6fe6;}
+    .error {color:red;font-size:14px;margin-top:10px;}
   </style>
 </head>
 <body>
-  <div class="box">
+  <div class="login-box">
     <h2>🔐 登入安安系統</h2>
     <form method="POST" action="/login">
       <input type="text" name="username" placeholder="帳號" required>
