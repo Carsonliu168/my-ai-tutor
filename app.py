@@ -1,394 +1,254 @@
-# ==================================================
+# ================================
 # 📘 數學小老師安安主程式 app.py
-# v5.0.26-dialog-memory-fix-full：保留全功能；強化 /chat 對話記憶 + 分段教學
-# 變更重點：
-# 1) 同題對話記憶：未答對不跳題，僅在答對時才清除 last_problem
-# 2) 分段輸出：以 \n\n 斷行，保持教學口吻
-# 3) 僅在無待答題目時，才呼叫 DeepSeek →（備援）OpenAI
-# ==================================================
+# v4.7.10-dialogfix：分段排版 + 懂了/不懂邏輯優化
+# ================================
 
-from flask import Flask, render_template, request, jsonify, redirect, session, url_for
-import os, json, sqlite3, bcrypt, requests, re, random
+from flask import Flask, render_template, request, jsonify, redirect, session
+import os, json, base64, requests, sqlite3, uuid, re, random
 from datetime import datetime, timedelta
 
-# -------------------------------
-# ✅ Flask 初始化
-# -------------------------------
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.permanent_session_lifetime = timedelta(days=30)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# -------------------------------
-# ✅ 模型金鑰讀取與檢查
-# -------------------------------
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GAC_JSON = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", "")
+# API Keys
+deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
+openai_api_key   = os.getenv("OPENAI_API_KEY", "")
+gemini_api_key   = os.getenv("GEMINI_API_KEY", "")
 
-print(f"🔍 環境變數檢查： DEEPSEEK={'OK' if DEEPSEEK_API_KEY else '❌'}; "
-      f"GOOGLE_API_KEY={'OK' if GOOGLE_API_KEY else '❌'}; "
-      f"OPENAI_API_KEY={'OK' if OPENAI_API_KEY else '❌'}; "
-      f"GAC_JSON={'OK' if GAC_JSON else '❌'}")
+# SQLite
+DB_PATH = "data/anan.db"
+os.makedirs("data", exist_ok=True)
 
-# -------------------------------
-# ✅ 資料庫初始化（含 admin/demo 帳號）
-# -------------------------------
-def initialize_admin_user():
-    os.makedirs("data", exist_ok=True)
-    db_path = os.path.join("data", "anan.db")
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        created_at TEXT
+    )""")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS records(
+        id TEXT PRIMARY KEY,
+        user TEXT,
+        question TEXT,
+        answer TEXT,
+        correct INTEGER,
+        created_at TEXT
+    )""")
+    conn.commit(); conn.close()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password_hash TEXT,
-            role TEXT DEFAULT 'user',
-            profile_type TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+init_db()
+
+def seed_admin():
+    conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+    c.execute("SELECT 1 FROM users WHERE username='anan_admin'")
+    if not c.fetchone():
+        c.execute(
+            "INSERT INTO users (username, password, role, created_at) VALUES ('anan_admin','1234','admin',datetime('now'))"
         )
-    """)
-
-    cur.execute("SELECT * FROM users WHERE username='anan_admin'")
-    if not cur.fetchone():
-        pw = bcrypt.hashpw("admin123".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        cur.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                    ("anan_admin", pw, "admin"))
-        print("✅ 已建立 anan_admin / 密碼 admin123")
-
-    cur.execute("SELECT * FROM users WHERE username='demo_user'")
-    if not cur.fetchone():
-        pw = bcrypt.hashpw("demo123".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        cur.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                    ("demo_user", pw, "user"))
-        print("✅ 已建立 demo_user / 密碼 demo123")
-
-    conn.commit()
+        conn.commit()
+        print("✅ 已自動建立管理員帳號：anan_admin / 密碼 1234")
     conn.close()
 
-initialize_admin_user()
+seed_admin()
+print("✅ [安安] 資料庫就緒，含 users 登入表 (v4.7.10)")
 
-# -------------------------------
-# ✅ 登入 / 登出 / 註冊
-# -------------------------------
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"].strip()
+# -----------------------------------
+# 🧩 文字格式化：分段排版
+# -----------------------------------
+def format_ai_reply(text):
+    """把 AI 的回答轉成分段 HTML"""
+    if not text:
+        return text
+    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)  # 移除1.2.3.
+    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')  # 轉換段落
+    return text.strip()
 
-        conn = sqlite3.connect("data/anan.db")
-        cur = conn.cursor()
-        cur.execute("SELECT password_hash, role FROM users WHERE username = ?", (username,))
-        row = cur.fetchone()
-        conn.close()
+# -----------------------------------
+# 🧠 AI邏輯
+# -----------------------------------
+def normalize_math_terms(text):
+    if not text: return text
+    text = text.replace("π", "3.1416")
+    text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
+    return text
 
-        if row and bcrypt.checkpw(password.encode("utf-8"), row[0].encode("utf-8")):
-            session["username"] = username
-            session["role"] = row[1]
-            session.permanent = True
-            return redirect("/")
-        else:
-            return render_template("login.html", error="帳號或密碼錯誤")
-    return render_template("login.html")
+def build_system_prompt(style: str) -> str:
+    return f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
+請直接進入數學內容，**不要自我介紹、不要寒暄、不要重複開場白**。
 
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        username = request.form["username"].strip()
-        email = request.form.get("email", "").strip()
-        password = request.form["password"].strip()
+教學風格：
+- 用溫柔、親切、鼓勵式語氣。
+- 採用蘇格拉底式提問法，引導學生一步步思考。
+- 若模式為 direct，請直接給出完整步驟、公式、代入與答案。
+- 若學生輸入簡短或不完整，請先釐清再教。
 
-        if not username or not password:
-            return render_template("register.html", error="請輸入帳號與密碼")
+教學原則：
+1️⃣ 若學生答對，請肯定並補上完整算式。
+2️⃣ 若學生答錯，請鼓勵並引導他找出錯誤。
+3️⃣ 若學生問公式或概念，請結合例題說明。
+4️⃣ 不要閒聊、不要說自己是 AI，只要以「安安」的身份教學。
+5️⃣ {style}
+"""
 
-        conn = sqlite3.connect("data/anan.db")
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM users WHERE username = ?", (username,))
-        if cur.fetchone():
-            conn.close()
-            return render_template("register.html", error="此帳號已存在")
-
-        pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        cur.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                    (username, pw, "user"))
-        conn.commit()
-        conn.close()
-        return redirect("/login")
-    return render_template("register.html")
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
-
-# -------------------------------
-# ✅ 首頁導向
-# -------------------------------
-@app.route("/")
-def home():
-    username = session.get("username")
-    role = session.get("role", "user")
-
-    if not username:
-        return redirect("/login")
-
-    conn = sqlite3.connect("data/anan.db")
-    cur = conn.cursor()
-    cur.execute("SELECT role, profile_type FROM users WHERE username = ?", (username,))
-    user = cur.fetchone()
-    conn.close()
-
-    if not user:
-        return redirect("/login")
-
-    role, profile_type = user
-    session["role"] = role
-
-    if role == "admin":
-        return render_template("index.html", username=username, role=role)
-    elif not profile_type:
-        return redirect("/cognitive_test")
-    else:
-        return render_template("index.html", username=username, role=role)
-
-# -------------------------------
-# ✅ 認知測驗頁面與提交（保持原狀）
-# -------------------------------
-@app.route("/cognitive_test")
-def cognitive_test():
-    if "username" not in session:
-        return redirect("/login")
-    return render_template("test_intro.html")
-
-@app.route("/submit_test", methods=["POST"])
-def submit_test():
-    data = request.get_json()
-    answers = data.get("answers", [])
-
-    if not answers or len(answers) != 7:
-        return jsonify({"success": False, "error": "答案格式錯誤"})
-
-    a_count, b_count = answers.count("A"), answers.count("B")
-
-    if a_count - b_count >= 3:
-        profile_type = "邏輯戰略家"
-    elif b_count - a_count >= 3:
-        profile_type = "創意視覺家"
-    else:
-        profile_type = "平衡大師"
-
-    username = session.get("username")
-    if username:
-        conn = sqlite3.connect("data/anan.db")
-        cur = conn.cursor()
-        cur.execute("UPDATE users SET profile_type = ? WHERE username = ?", (profile_type, username))
-        conn.commit()
-        conn.close()
-
-    return jsonify({"success": True, "result": profile_type})
-
-@app.route("/test_result")
-def test_result():
-    result = request.args.get("result", "未知類型")
-    descriptions = {
-        "邏輯戰略家": "你擅長以條理與策略解決問題，喜歡從全局推理出答案，是理性與分析的高手。",
-        "創意視覺家": "你具有豐富的想像力與整體感知力，習慣用圖像、感覺和關聯去理解知識。",
-        "平衡大師": "你能靈活切換邏輯與直覺的思維，能在不同學習情境中找到最適合的方式。"
-    }
-    description = descriptions.get(result, "每個人都有不同的思考方式，這是你獨特的優勢！")
-    username = session.get("username", "未知使用者")
-    return render_template("test_result.html", username=username, result=result, description=description)
-
-# -------------------------------------------------
-# 🧠 四則互動：同題記憶 + 分段教學（新增/修正）
-# -------------------------------------------------
-ARITH_REGEX = re.compile(r'^\s*(\d+)\s*([+\-×x*/÷])\s*(\d+)\s*=?\s*$')
-
-def _normalize_op(op: str) -> str:
-    return {'x': '×', '*': '×', '/': '÷'}.get(op, op)
-
-def _calc(a: int, op: str, b: int):
-    if op == '+':
-        return a + b
-    if op == '-':
-        return a - b
-    if op == '×':
-        return a * b
-    if op == '÷':
-        return None if b == 0 else a / b
-    return None
-
-def _try_parse_equation(text: str):
-    m = ARITH_REGEX.match(text)
-    if not m:
-        return None
-    a, op, b = int(m.group(1)), _normalize_op(m.group(2)), int(m.group(3))
-    return (a, op, b)
-
-def _try_parse_number(text: str):
-    t = (text or "").strip()
-    if re.fullmatch(r'^[+-]?\d+(\.\d+)?$', t):
-        try:
-            return int(t)
-        except:
-            return float(t)
-    return None
-
-def _remember_problem(a: int, op: str, b: int):
-    session.permanent = True
-    session['last_problem'] = {'a': a, 'op': op, 'b': b}
-    session.modified = True
-
-def _peek_problem():
-    return session.get('last_problem')
-
-def _clear_problem():
-    session.pop('last_problem', None)
-    session.modified = True
-
-def _almost_equal(x, y, tol=1e-9):
-    try:
-        return abs(float(x) - float(y)) < tol
-    except:
-        return x == y
-
-# -------------------------------
-# ✅ 聊天 / 清除 / 上傳
-# -------------------------------
-@app.route("/chat", methods=["POST"])
-def chat():
-    """
-    規則：
-    1) 輸入像「3+5=」→ 視為新題目，記錄 last_problem，回分段引導，不直接給答案
-    2) 若有未完成題目且輸入為數字 → 判斷正誤
-       - 答對：只給讚美（短句），清除 last_problem
-       - 答錯：給精準提示，不跳題、不清除 last_problem
-    3) 其他情況（無題或非數字）→ 交給 DeepSeek（失敗則 OpenAI 備援）
-    """
-    data = request.get_json(silent=True) or {}
-    user_input = (data.get("message") or "").strip()
-    if not user_input:
-        return jsonify({"reply": "請輸入題目或問題內容喔～"})
-
-    # 1) 是否為新題目（算式）
-    parsed = _try_parse_equation(user_input)
-    if parsed:
-        a, op, b = parsed
-        _remember_problem(a, op, b)
-        reply = (
-            "好，我們來一步步思考這個問題！\n\n"
-            f"題目是：{a} {op} {b}\n\n"
-            "👉 請你直接輸入「答案的數字」就好（例如：8）。我會立刻告訴你對不對。"
-        )
-        return jsonify({"reply": reply})
-
-    # 2) 是否正在等待答案 + 使用者回了數字
-    prob = _peek_problem()
-    user_num = _try_parse_number(user_input)
-    if prob and user_num is not None:
-        a, op, b = prob['a'], prob['op'], prob['b']
-        correct = _calc(a, op, b)
-
-        if correct is None:
-            #（例如除以 0）
-            _clear_problem()
-            return jsonify({"reply": "這題算式有問題（可能是除以 0），我們換一題吧！"})
-
-        if _almost_equal(user_num, correct):
-            _clear_problem()
-            praise = random.choice(["太棒了！", "答對囉！", "漂亮！就是這個答案！", "很棒，繼續加油！"])
-            return jsonify({"reply": praise})
-        else:
-            # 答錯：給精準提示，不清題
-            if op == '+':
-                tip = f"提示：從 {a} 往後數 {b} 步：{a+1}、{a+2}、…，最後一個數字就是答案。"
-            elif op == '-':
-                tip = f"提示：從 {a} 往前退 {b} 步：{a-1}、{a-2}、…，停下來的數字就是答案。"
-            elif op == '×':
-                tip = f"提示：想像有 {a} 組，每組 {b} 個；或做 {a} 次加法，每次加 {b}。"
-            else:  # '÷'
-                tip = f"提示：把 {a} 平分成 {b} 份，想像平均分給 {b} 個人，每人拿到一樣多。"
-
-            reply = (
-                "這次不對喔～再想想看。\n\n"
-                f"{tip}\n\n"
-                "👉 再試一次，直接輸入你的答案數字。"
-            )
-            return jsonify({"reply": reply})
-
-    # 3) 其他情況：沒有待解題 or 輸入不是數字 → 交給 AI 模型
-    user_text = user_input
+def ask_anan(question, mode="socratic"):
+    if len((question or "").strip()) < 5:
+        mode = "direct"
+    style = (
+        "採用蘇格拉底式提問法，引導學生一步步思考。"
+        if mode == "socratic"
+        else "請用清楚步驟直接講解完整解法，包含公式、代入、計算與答案。"
+    )
+    system_prompt = build_system_prompt(style)
 
     # DeepSeek 主模型
     try:
-        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "你是台灣小學生的數學小老師安安，用繁體中文蘇格拉底式教學。回覆請保持分段與條列。"},
-                {"role": "user", "content": user_text}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
             ],
-            "temperature": 0.7
+            "temperature": 0.2,
         }
-        r = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
-        if r.status_code == 200:
-            data = r.json()
-            reply = (data["choices"][0]["message"]["content"] or "").strip()
-        else:
-            raise Exception(f"DeepSeek failed: {r.status_code}")
-    except Exception:
-        # OpenAI 備援
-        try:
-            headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [
-                    {"role": "system", "content": "你是台灣小學生的數學小老師安安，用繁體中文蘇格拉底式教學。回覆請保持分段與條列。"},
-                    {"role": "user", "content": user_text}
-                ]
-            }
-            r2 = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
-            if r2.status_code == 200:
-                data2 = r2.json()
-                reply = (data2["choices"][0]["message"]["content"] or "").strip()
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
+        reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        if reply:
+            return normalize_math_terms(reply)
+    except Exception as e:
+        print("DeepSeek 失敗:", e)
+
+    # OpenAI 備援
+    try:
+        if not openai_api_key:
+            raise RuntimeError("未設定 OPENAI_API_KEY")
+        headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+        payload2 = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
+            ],
+            "temperature": 0.2,
+        }
+        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=40)
+        reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        if reply:
+            return normalize_math_terms(reply)
+    except Exception as e:
+        print("OpenAI 備援失敗:", e)
+
+    return "（安安暫時沒回應，請稍後再試一次）"
+
+# -----------------------------------
+# 🔐 登入登出
+# -----------------------------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM users WHERE username=? AND password=?", (username, password))
+        user = c.fetchone()
+        conn.close()
+        if user:
+            session["user"] = username
+            return redirect("/")
+        return render_template("login.html", error="帳號或密碼錯誤，請再試一次。")
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("user", None)
+    return redirect("/login")
+
+# -----------------------------------
+# 🗨️ 聊天主頁
+# -----------------------------------
+@app.route("/", methods=["GET", "POST"])
+def home():
+    if "user" not in session:
+        return redirect("/login")
+
+    if request.method == "POST":
+        msg = request.form.get("message", "").strip()
+
+        # ✅ 判斷懂了／不懂邏輯
+        if "懂了" in msg:
+            praise_list = [
+                "太棒了！你真的很努力 👍",
+                "安安老師為你鼓掌 👏",
+                "很好～你已經掌握這個觀念了！",
+                "非常好！我們繼續挑戰下一題吧 💪"
+            ]
+            reply = random.choice(praise_list)
+            session["current_problem"] = None
+            session["in_progress"] = False
+            return jsonify({"reply": reply})
+
+        if "不懂" in msg:
+            if session.get("current_problem"):
+                reply = "沒關係，我們再一起看看這一題的重點吧～"
             else:
-                reply = f"⚠️ 備援模型無回覆（{r2.status_code}）。"
-        except Exception:
-            reply = "⚠️ 系統忙碌中，請稍後再試。"
+                reply = "沒問題，我們可以換一題或再問別的問題喔～"
+            return jsonify({"reply": reply})
 
-    return jsonify({"reply": reply})
+        # ✅ 一般提問
+        reply = ask_anan(msg, mode="socratic")
+        reply = format_ai_reply(reply)
+        session["current_problem"] = msg
+        session["in_progress"] = True
 
+        # 寫入紀錄
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute(
+                "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
+                (str(uuid.uuid4()), session["user"], msg, reply, 1, datetime.now().isoformat()),
+            )
+            conn.commit()
+        except sqlite3.Error as e:
+            print("⚠️ 寫入 records 失敗：", e)
+        finally:
+            conn.close()
+
+        return jsonify({"reply": reply})
+
+    return render_template("index.html")
+
+# -----------------------------------
+# 🧹 清除 session
+# -----------------------------------
 @app.route("/clear")
 def clear():
-    # 保持你原有邏輯，同時把等待中的題目也清掉（避免卡住）
-    session.pop("records", None)
-    session.pop("last_problem", None)
+    session.clear()
     return redirect("/")
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    file = request.files.get("file") or request.files.get("image")
-    if not file:
-        return jsonify({"reply": "⚠️ 沒有收到圖片檔案，請再選一次並上傳。"})
-    return jsonify({"reply": "📷 圖片已收到！請簡要描述題目重點，我會一步步帶你解。"})
+# -----------------------------------
+# 📩 學生回饋
+# -----------------------------------
+@app.route("/feedback", methods=["POST"])
+def feedback():
+    data = request.get_json(silent=True) or {}
+    fb = data.get("feedback", "")
+    if fb == "understood":
+        return jsonify({"reply": "太棒了～安安替你開心 💪"})
+    if fb == "confused":
+        return jsonify({"reply": "沒關係，我再換個方式說一次，記得抓住關鍵公式喔～"})
+    return jsonify({"reply": "收到你的回饋，謝謝！"})
 
-# -------------------------------
-# ✅ 404 / 健康檢查
-# -------------------------------
-@app.errorhandler(404)
-def not_found(e):
-    return "404 Not Found", 404
-
-@app.route("/health")
-def health():
-    return "OK", 200
-
-# -------------------------------
-# ✅ 啟動伺服器
-# -------------------------------
+# -----------------------------------
+# 🚀 啟動
+# -----------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.getenv("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
