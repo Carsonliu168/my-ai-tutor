@@ -1,128 +1,241 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>登入 - 數學小老師安安</title>
-  <style>
-    body {
-      font-family: "Microsoft JhengHei", Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    .container {
-      background: white;
-      border-radius: 20px;
-      padding: 40px;
-      box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-      width: 100%;
-      max-width: 400px;
-      margin-bottom: 30px;
-    }
-    .logo { text-align: center; margin-bottom: 30px; }
-    .logo h1 { color: #333; margin: 0; font-size: 28px; }
-    .logo .icon { font-size: 40px; display: block; margin-bottom: 10px; }
-    .form-group { margin-bottom: 20px; }
-    label { display: block; margin-bottom: 8px; color: #555; font-weight: bold; }
-    input[type="text"], input[type="password"] {
-      width: 100%;
-      padding: 12px 15px;
-      border: 2px solid #e1e5e9;
-      border-radius: 10px;
-      font-size: 16px;
-      box-sizing: border-box;
-      transition: border-color 0.3s;
-    }
-    input[type="text"]:focus, input[type="password"]:focus {
-      border-color: #667eea;
-      outline: none;
-    }
-    .btn {
-      width: 100%;
-      padding: 12px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: transform 0.2s;
-    }
-    .btn:hover { transform: translateY(-2px); }
-    .links { text-align: center; margin-top: 20px; }
-    .links a { color: #667eea; text-decoration: none; }
-    .links a:hover { text-decoration: underline; }
-    .error {
-      background: #ffe6e6;
-      color: #d63384;
-      padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      text-align: center;
-      border-left: 4px solid #d63384;
-    }
-    .demo-note {
-      background: #e7f3ff;
-      padding: 15px;
-      border-radius: 10px;
-      margin-top: 20px;
-      text-align: center;
-      border-left: 4px solid #0078d7;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    footer {
-      text-align: center;
-      color: #eee;
-      font-size: 14px;
-      padding: 10px;
-      line-height: 1.4;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數學小老師安安 - 登入</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft JhengHei', 'PingFang TC', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #667eea;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .logo p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .error-message {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        .demo-accounts {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .demo-accounts h3 {
+            color: #666;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .demo-account {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        .demo-account strong {
+            color: #667eea;
+        }
+
+        .demo-account .account-info {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .version-info {
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+            }
+
+            .logo h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo">
-      <span class="icon">🧮</span>
-      <h1>歡迎回來！</h1>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🎓 數學小老師安安</h1>
+            <p>讓學習數學變得更有趣</p>
+        </div>
+
+        {% if error %}
+        <div class="error-message">
+            ⚠️ {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <div class="form-group">
+                <label for="username">帳號</label>
+                <input type="text" id="username" name="username" required autofocus placeholder="請輸入您的帳號">
+            </div>
+
+            <div class="form-group">
+                <label for="password">密碼</label>
+                <input type="password" id="password" name="password" required placeholder="請輸入您的密碼">
+            </div>
+
+            <button type="submit" class="btn-login">登入</button>
+        </form>
+
+        <div class="demo-accounts">
+            <h3>📋 測試帳號</h3>
+            
+            <div class="demo-account">
+                <strong>👨‍🎓 學生體驗帳號</strong>
+                <div class="account-info">
+                    帳號：demo_user<br>
+                    密碼：demo123<br>
+                    功能：完整問卷流程
+                </div>
+            </div>
+
+            <div class="demo-account">
+                <strong>👨‍💼 管理員帳號</strong>
+                <div class="account-info">
+                    帳號：anan_admin<br>
+                    密碼：1234<br>
+                    功能：跳過問卷，直接使用
+                </div>
+            </div>
+        </div>
+
+        <div class="version-info">
+            v4.8.10-auto-reset
+        </div>
     </div>
 
-    {% if error %}
-    <div class="error">{{ error }}</div>
-    {% endif %}
+    <script>
+        // 自動聚焦到帳號輸入框
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('username').focus();
+        });
 
-    <form method="POST" action="/login">
-      <div class="form-group">
-        <label for="username">帳號</label>
-        <input type="text" id="username" name="username" required placeholder="請輸入帳號（demo_user 或 anan_admin）">
-      </div>
-      <div class="form-group">
-        <label for="password">密碼</label>
-        <input type="password" id="password" name="password" required placeholder="請輸入密碼（demo123 或 1234）">
-      </div>
-      <button type="submit" class="btn">登入帳號</button>
-    </form>
-
-    <div class="links">
-      <p><a href="/">← 返回首頁</a></p>
-    </div>
-
-    <div class="demo-note">
-      <strong>💡 提示：</strong><br>
-      登入 <b>demo_user</b> 會進入「學習風格測驗」體驗完整流程；<br>
-      登入 <b>anan_admin</b> 則直接進入主畫面展示功能。
-    </div>
-  </div>
-
-  <footer>
-    🧮 數學小老師安安 v5.0.22 ｜ © 2025 WeShareAI  
-    <div>登入狀態：{{ username or '未登入' }} ｜ 角色：{{ role or 'student' }}</div>
-  </footer>
+        // Enter 快速提交
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.closest('form').submit();
+            }
+        });
+    </script>
 </body>
 </html>

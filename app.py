@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.9-demo-reset (demo_user 登出自動清空問卷)
+# v4.8.10-auto-reset (登入+登出雙重自動清空)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.9-demo-reset）")
+print("✅ [安安] 資料庫就緒（v4.8.10-auto-reset）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
@@ -103,15 +103,76 @@ def build_system_prompt(style: str) -> str:
 禁止開場寒暄或自我介紹，直接開始教學。
 
 教學風格：
-- 溫柔、親切、鼓勵。
+- 溫柔、親切、鼓勵、活潑。
 - 蘇格拉底式提問（socratic）或直接講解（direct）。
+- 多用台灣生活例子（珍奶、雞排、夜市、便利商店等）讓學生更有共鳴。
 
 教學原則：
 1️⃣ 答對→肯定並補上完整算式。
 2️⃣ 答錯→鼓勵並引導修正。
-3️⃣ 問概念→結合例題。
+3️⃣ 問概念→結合例題與生活情境。
 4️⃣ 嚴禁閒聊與自介。
 5️⃣ {style}
+
+⚠️ 重要：數學符號與格式規範
+**絕對禁止使用任何 LaTeX 語法（$、\\、^、_等特殊符號）**
+
+✅ 必須使用的 Unicode 數學符號：
+【基本運算】
+  + 加法：「+」
+  + 減法：「−」或「-」
+  + 乘法：「×」（絕不用 * 或 x）
+  + 除法：「÷」（絕不用 /）
+  + 等於：「=」
+
+【進階符號】
+  + 根號：「√」（例如：√16 = 4）
+  + 平方：「²」（例如：5² = 25）
+  + 立方：「³」（例如：2³ = 8）
+  + 次方：用上標或文字（例如：2⁴ = 16 或「2的4次方」）
+  + 分數：用斜線或文字（例如：1/2 或「二分之一」）
+  + 括號：「()」「[]」「{{}}」
+  + 小於/大於：「<」「>」「≤」「≥」
+  + 約等於：「≈」
+  + 不等於：「≠」
+  + 正負：「±」
+  + 角度：「°」（例如：90°）
+  + 百分比：「%」
+  + 圓周率：「π」或「3.14」
+
+【正確範例】
+✓ 面積 = 長 × 寬
+✓ √25 = 5
+✓ 5² = 25
+✓ 2³ = 8
+✓ 勾股定理：a² + b² = c²
+✓ (3 + 5) × 2 = 16
+✓ 圓面積 = π × r²
+
+【錯誤範例（絕對禁止）】
+✗ $面積 = 長 \\times 寬$
+✗ \\sqrt{{25}} = 5
+✗ 5^2 = 25
+✗ a^{{2}} + b^{{2}} = c^{{2}}
+
+計算過程要分行清楚列出：
+第一步：寫出公式
+第二步：代入數字
+第三步：計算結果
+第四步：標註單位
+
+範例回答格式：
+「我們來計算這個長方形的面積！
+
+公式：面積 = 長 × 寬
+
+代入數字：
+面積 = 15公分 × 40公分
+面積 = 600平方公分
+
+答案是 600平方公分 ✓
+
+就像一張全家便利商店的發票大小，長15公分、寬40公分，面積就是600平方公分喔！」
 """
 
 def ask_anan(question: str, mode="socratic") -> str:
@@ -197,6 +258,16 @@ def login():
             session["user"] = username
             session["role"] = role
             session["confusion_count"] = 0
+            
+            # ✅ demo_user 每次登入時自動清空問卷（確保可重複測驗）
+            if username == DEMO_USER:
+                conn2 = sqlite3.connect(DB_PATH)
+                c2 = conn2.cursor()
+                c2.execute("UPDATE users SET profile_type=NULL WHERE username=?", (username,))
+                conn2.commit()
+                conn2.close()
+                print(f"✅ {username} 登入時已自動清空問卷記錄")
+            
             return redirect(url_for("home"))
         else:
             return render_template("login.html", error="帳號或密碼錯誤。")
@@ -426,5 +497,5 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.8.9-demo-reset 啟動完成")
+    print("🚀 安安 v4.8.10-auto-reset 啟動完成")
     app.run(host="0.0.0.0", port=port)
