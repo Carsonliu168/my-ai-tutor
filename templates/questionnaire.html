@@ -430,7 +430,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    window.location.href = '/questionnaire_result';
+                    window.location.href = '/questionnaire_result?result=' + encodeURIComponent(data.result);
                 } else {
                     alert('提交失敗：' + (data.error || '未知錯誤'));
                 }

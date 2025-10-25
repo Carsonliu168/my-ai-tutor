@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.6-stable (login + text chat + vision)
+# v4.8.9-demo-reset (demo_user 登出自動清空問卷)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -29,6 +29,7 @@ def init_db():
         username TEXT UNIQUE,
         password TEXT,
         role TEXT,
+        profile_type TEXT,
         created_at TEXT
     )""")
     c.execute("""
@@ -81,13 +82,13 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.6-stable）")
+print("✅ [安安] 資料庫就緒（v4.8.9-demo-reset）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
     if not text: return text
     text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
-    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')  # ← 正確：用 <br>
+    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
     text = re.sub(r'\$([A-Za-z0-9])\$', r'\1', text)
     return text.strip()
 
@@ -203,63 +204,160 @@ def login():
 
 @app.route("/logout")
 def logout():
+    # ✅ 如果是 demo_user,登出時自動清空問卷記錄
+    username = session.get("user")
+    if username == DEMO_USER:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE users SET profile_type=NULL WHERE username=?", (username,))
+        conn.commit()
+        conn.close()
+        print(f"✅ 已清空 {username} 的問卷記錄")
+    
     session.clear()
     return redirect("/login")
 
-# ===== 主互動（守門＋三段式不懂）=====
+# ===== 問卷相關路由 =====
+@app.route("/questionnaire")
+def questionnaire():
+    if "user" not in session:
+        return redirect("/login")
+    return render_template("questionnaire.html")
+
+@app.route("/submit_questionnaire", methods=["POST"])
+def submit_questionnaire():
+    if "user" not in session:
+        return jsonify({"success": False, "error": "未登入"})
+    
+    data = request.get_json()
+    answers = data.get("answers", [])
+    
+    if not answers or len(answers) != 7:
+        return jsonify({"success": False, "error": "答案格式錯誤"})
+    
+    # 計算結果
+    a_count = answers.count("A")
+    b_count = answers.count("B")
+    
+    if a_count - b_count >= 3:
+        profile_type = "邏輯戰略家"
+    elif b_count - a_count >= 3:
+        profile_type = "創意視覺家"
+    else:
+        profile_type = "平衡大師"
+    
+    # 儲存到資料庫
+    username = session.get("user")
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE users SET profile_type=? WHERE username=?", (profile_type, username))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"success": True, "result": profile_type})
+
+@app.route("/questionnaire_result")
+def questionnaire_result():
+    if "user" not in session:
+        return redirect("/login")
+    
+    result = request.args.get("result", "未知類型")
+    descriptions = {
+        "邏輯戰略家": "你擅長以條理與策略解決問題，喜歡從全局推理出答案，是理性與分析的高手。",
+        "創意視覺家": "你具有豐富的想像力與整體感知力，習慣用圖像、感覺和關聯去理解知識。",
+        "平衡大師": "你能靈活切換邏輯與直覺的思維，能在不同學習情境中找到最適合的方式。"
+    }
+    description = descriptions.get(result, "每個人都有不同的思考方式，這是你獨特的優勢！")
+    username = session.get("user", "未知使用者")
+    role = session.get("role", "student")
+    
+    return render_template("questionnaire_result.html", 
+                         username=username, 
+                         role=role,
+                         result=result, 
+                         description=description)
+
+# ✅ 新增:手動重新測驗路由
+@app.route("/reset_questionnaire")
+def reset_questionnaire():
+    if "user" not in session:
+        return redirect("/login")
+    
+    username = session.get("user")
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE users SET profile_type=NULL WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    
+    return redirect("/questionnaire")
+
+# ===== 主互動（守門＋三段式不懂＋問卷檢查）=====
 @app.route("/", methods=["GET", "POST"])
 def home():
+    # ✅ 強制登入檢查
     if "user" not in session:
-        if request.method == "GET":
-            return redirect("/login")
-        return jsonify({"reply": "⚠️ 請先登入後再使用安安老師喔～"})
+        return redirect("/login")
+    
+    # ✅ GET 請求時檢查是否需要填問卷
+    if request.method == "GET":
+        role = session.get("role")
+        if role != "admin":  # 只檢查非管理員
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            row = c.execute("SELECT profile_type FROM users WHERE username=?", 
+                          (session["user"],)).fetchone()
+            conn.close()
+            if not row or not row[0]:  # 沒填過問卷
+                return redirect("/questionnaire")
+        
+        # 已登入且(是管理員 或 填過問卷) → 顯示聊天頁
+        return render_template("index.html", username=session.get("user"), role=session.get("role"))
 
-    if request.method == "POST":
-        msg = (request.form.get("message") or "").strip()
-        confusion_count = session.get("confusion_count", 0)
+    # ===== POST 請求處理 =====
+    msg = (request.form.get("message") or "").strip()
+    confusion_count = session.get("confusion_count", 0)
 
-        if "懂了" in msg:
-            reply = random.choice([
-                "太棒了！你真的很努力 👍",
-                "安安老師為你鼓掌 👏",
-                "很好～你已經掌握這個觀念了！",
-                "非常好！我們繼續挑戰下一題吧 💪"
-            ])
-            session["confusion_count"] = 0
-            return jsonify({"reply": reply})
-
-        if "不懂" in msg:
-            if session.get("current_problem"):
-                confusion_count += 1
-                session["confusion_count"] = confusion_count
-                if confusion_count == 1:
-                    followup = f"學生說他不太懂這題「{session['current_problem']}」，請換個角度、舉例或更簡單的方式再教一次。"
-                    reply = ask_anan(followup, mode="direct")
-                elif confusion_count == 2:
-                    followup = f"學生第二次說他還是不懂這題「{session['current_problem']}」，請再用不同方式簡短解釋，語氣更鼓勵。"
-                    reply = ask_anan(followup, mode="direct")
-                else:
-                    reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
-            else:
-                reply = "沒問題，我們可以換一題或再問別的問題喔～"
-            return jsonify({"reply": format_ai_reply(reply)})
-
-        # 一般題目 → 模型
-        reply = format_ai_reply(ask_anan(msg, mode="socratic"))
-        session["current_problem"] = msg
+    if "懂了" in msg:
+        reply = random.choice([
+            "太棒了！你真的很努力 👍",
+            "安安老師為你鼓掌 👏",
+            "很好～你已經掌握這個觀念了！",
+            "非常好！我們繼續挑戰下一題吧 💪"
+        ])
         session["confusion_count"] = 0
-
-        # 寫入紀錄
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
-            (str(uuid.uuid4()), session["user"], msg, reply, 1, datetime.now().isoformat()),
-        )
-        conn.commit(); conn.close()
         return jsonify({"reply": reply})
 
-    return render_template("index.html", username=session.get("user"), role=session.get("role"))
+    if "不懂" in msg:
+        if session.get("current_problem"):
+            confusion_count += 1
+            session["confusion_count"] = confusion_count
+            if confusion_count == 1:
+                followup = f"學生說他不太懂這題「{session['current_problem']}」，請換個角度、舉例或更簡單的方式再教一次。"
+                reply = ask_anan(followup, mode="direct")
+            elif confusion_count == 2:
+                followup = f"學生第二次說他還是不懂這題「{session['current_problem']}」，請再用不同方式簡短解釋，語氣更鼓勵。"
+                reply = ask_anan(followup, mode="direct")
+            else:
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
+        else:
+            reply = "沒問題，我們可以換一題或再問別的問題喔～"
+        return jsonify({"reply": format_ai_reply(reply)})
+
+    # 一般題目 → 模型
+    reply = format_ai_reply(ask_anan(msg, mode="socratic"))
+    session["current_problem"] = msg
+    session["confusion_count"] = 0
+
+    # 寫入紀錄
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
+        (str(uuid.uuid4()), session["user"], msg, reply, 1, datetime.now().isoformat()),
+    )
+    conn.commit(); conn.close()
+    return jsonify({"reply": reply})
 
 @app.route("/admin")
 def admin_panel():
@@ -328,5 +426,5 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.8.6-stable 啟動完成")
+    print("🚀 安安 v4.8.9-demo-reset 啟動完成")
     app.run(host="0.0.0.0", port=port)
