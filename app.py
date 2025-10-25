@@ -1,9 +1,9 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.0-cognitive-secure-restored
-# - 恢復可登入版本
-# - 登入頁不顯示帳號密碼
-# - 保留原 AI、資料庫、三段式不懂邏輯
+# v4.8.0-cognitive-secure-restored+vision
+# - 保留原 v4.8.0 登入/教學/三段式邏輯
+# - 加回 /analyze_image 圖片題辨識（Gemini）
+# - 內建預設帳號（沒設環境變數也能登入）
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -85,7 +85,7 @@ def seed_accounts():
     conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.0-cognitive-secure-restored）")
+print("✅ [安安] 資料庫就緒（v4.8.0-cognitive-secure-restored+vision）")
 
 # ===== 文字格式化 =====
 def format_ai_reply(text: str) -> str:
@@ -282,7 +282,60 @@ def clear():
     session.clear()
     return redirect("/login")
 
+# ===== 圖片題（Gemini Vision）=====
+@app.route("/analyze_image", methods=["POST"])
+def analyze_image():
+    if "user" not in session:
+        return jsonify({"reply": "⚠️ 請先登入後再上傳題目喔～"})
+    try:
+        file = request.files.get("image")
+        if not file:
+            return jsonify({"reply": "⚠️ 沒有收到圖片檔案喔～"})
+
+        img_b64 = base64.b64encode(file.read()).decode("utf-8")
+
+        # 使用 Gemini 1.5 Flash 辨識（文字+圖片）
+        if not gemini_api_key:
+            return jsonify({"reply": "⚠️ 未設定 GEMINI_API_KEY，無法辨識圖片。"})
+        headers = {"Content-Type": "application/json"}
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": "這是一張數學題的照片，請先將題目轉成文字，然後用繁體中文詳細解題（包含公式、代入與最終答案）。"},
+                    {"inline_data": {"mime_type": "image/png", "data": img_b64}}
+                ]
+            }]
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        data = r.json()
+        reply = ""
+        try:
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            pass
+        if not reply:
+            reply = "⚠️ 無法辨識這張圖片的內容，請換一張清晰的照片再試看看。"
+
+        reply = format_ai_reply(normalize_math_terms(reply))
+
+        # 寫入紀錄
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), session["user"], "[圖片題上傳]", reply, 1, datetime.now().isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        return jsonify({"reply": reply})
+    except Exception as e:
+        print("⚠️ analyze_image 錯誤：", e)
+        return jsonify({"reply": "⚠️ 圖片辨識失敗，請稍後再試。"})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.8.0-cognitive-secure-restored 啟動完成")
+    print("🚀 安安 v4.8.0-cognitive-secure-restored+vision 啟動完成")
     app.run(host="0.0.0.0", port=port)
