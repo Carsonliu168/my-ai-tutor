@@ -95,19 +95,22 @@ def format_ai_reply(text: str) -> str:
 def normalize_math_terms(text: str) -> str:
     if not text: return text
     
-    # 清除所有 LaTeX 相關符號
+    # 先處理基本替換
     text = text.replace("π", "3.1416")
     text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
     
-    # 徹底清除 $ 符號（單個和成對的）
-    text = re.sub(r'\$+', '', text)  # 移除所有 $
+    # 徹底清除所有 $ 符號
+    text = re.sub(r'\$+', '', text)
     
     # 清除常見的 LaTeX 指令
     text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # \frac{a}{b} → a/b
     text = re.sub(r'\\[a-zA-Z]+', '', text)  # 移除剩餘的 \command
     
-    # 清除多餘的空格
-    text = re.sub(r'\s+', ' ', text)
+    # 清除 Markdown 標題符號 ### （但保留換行）
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # 只清除行內多餘空格，不破壞換行
+    text = re.sub(r'[ \t]+', ' ', text)  # 只清除空格和 Tab，保留 \n
     
     return text.strip()
 
