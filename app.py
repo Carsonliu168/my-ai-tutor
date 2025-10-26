@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.12 (修復清除紀錄 + 圖片辨識加入 OpenAI Vision 備援)
+# v4.8.13-final (修復 $ 符號和 Markdown 格式問題)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.12）")
+print("✅ [安安] 資料庫就緒（v4.8.13-final）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
