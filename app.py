@@ -14,7 +14,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 # ===== API Keys =====
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
 openai_api_key   = os.getenv("OPENAI_API_KEY", "")
-gemini_api_key   = os.getenv("GEMINI_API_KEY", "")
+gemini_api_key   = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
 
 # ===== DB =====
 DB_PATH = "data/anan.db"
