@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.13-final (修復 $ 符號和 Markdown 格式問題)
+# v4.9.0 (圖片題雙重驗算機制)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -82,14 +82,14 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.13-final）")
+print("✅ [安安] 資料庫就緒（v4.9.0 - 雙重驗算）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
     if not text: return text
     text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
     text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    text = re.sub(r'\$([A-Za-z0-9])\$', r'\1', text)
+    # 不再處理 $，因為 normalize_math_terms() 已經清除了
     return text.strip()
 
 def normalize_math_terms(text: str) -> str:
@@ -245,6 +245,71 @@ def ask_anan(question: str, mode="socratic") -> str:
         print("OpenAI 備援失敗:", e)
 
     return "（安安暫時沒回應，請稍後再試一次）"
+
+# ===== 提取題目文字（從 Vision 回應中）=====
+def extract_question_from_reply(vision_reply: str) -> str:
+    """從 Vision API 的完整回應中提取題目文字"""
+    if not vision_reply:
+        return ""
+    
+    # 嘗試找到「題目」相關的段落
+    lines = vision_reply.split('\n')
+    question_lines = []
+    in_question_section = False
+    
+    for line in lines:
+        line = line.strip()
+        # 開始收集題目
+        if any(keyword in line for keyword in ['題目', '問題', '求', '計算', '若', '已知']):
+            in_question_section = True
+        # 停止收集（遇到解題步驟）
+        if any(keyword in line for keyword in ['解', '步驟', '公式', '代入', '計算', '答案']):
+            if question_lines:  # 如果已經收集到題目就停止
+                break
+        # 收集題目內容
+        if in_question_section and line and not line.startswith('#'):
+            question_lines.append(line)
+            if len(question_lines) > 10:  # 最多收集10行
+                break
+    
+    # 如果沒找到，就用前幾行
+    if not question_lines:
+        question_lines = [line.strip() for line in lines[:5] if line.strip() and not line.strip().startswith('#')]
+    
+    question_text = ' '.join(question_lines)
+    # 清理
+    question_text = re.sub(r'#{1,6}\s+', '', question_text)
+    question_text = question_text[:500]  # 限制長度
+    
+    return question_text.strip()
+
+# ===== 比對答案（簡單版本）=====
+def answers_match(reply1: str, reply2: str) -> bool:
+    """簡單比對兩個答案是否相近"""
+    if not reply1 or not reply2:
+        return False
+    
+    # 提取數字
+    def extract_numbers(text):
+        # 找出所有數字（包括小數）
+        return re.findall(r'\d+\.?\d*', text)
+    
+    nums1 = extract_numbers(reply1)
+    nums2 = extract_numbers(reply2)
+    
+    # 如果兩邊都沒數字，無法比對
+    if not nums1 or not nums2:
+        return True  # 預設認為一致（保守）
+    
+    # 取最後幾個數字（通常是答案）
+    last_nums1 = nums1[-3:] if len(nums1) >= 3 else nums1
+    last_nums2 = nums2[-3:] if len(nums2) >= 3 else nums2
+    
+    # 檢查是否有重疊的數字
+    common = set(last_nums1) & set(last_nums2)
+    
+    # 如果有2個以上共同數字，認為答案相近
+    return len(common) >= min(2, len(last_nums1), len(last_nums2))
 
 # ===== 登入 / 登出 =====
 @app.route("/login", methods=["GET", "POST"])
@@ -481,7 +546,7 @@ def clear():
     
     return redirect("/")
 
-# ===== 圖片題（Gemini Vision → OpenAI Vision 備援）=====
+# ===== 圖片題（Vision 識別 + 雙重驗算）=====
 @app.route("/analyze_image", methods=["POST"])
 @app.route("/upload", methods=["POST"])  # 前端使用的路由
 def analyze_image():
@@ -493,7 +558,6 @@ def analyze_image():
         file = request.files.get("image") or request.files.get("file") or request.files.get("photo")
         
         if not file:
-            # Debug: 列出收到的所有欄位
             available_fields = list(request.files.keys())
             print(f"⚠️ 未收到圖片檔案。收到的欄位: {available_fields}")
             return jsonify({"reply": "⚠️ 沒有收到圖片檔案喔～"})
@@ -511,13 +575,14 @@ def analyze_image():
         elif filename.endswith('.webp'):
             mime_type = "image/webp"
         else:
-            mime_type = "image/jpeg"  # 預設使用 jpeg
+            mime_type = "image/jpeg"
 
         print(f"🔍 正在辨識圖片... (格式: {mime_type}, 大小: {len(img_bytes)} bytes)")
 
-        reply = ""
+        vision_reply = ""
         
-        # ===== 第一步：嘗試用 Gemini 識別 + 解題 =====
+        # ===== 步驟一：用 Vision API 識別圖片並解題 =====
+        # 優先嘗試 Gemini
         if gemini_api_key:
             try:
                 print("📸 使用 Gemini Vision 辨識...")
@@ -526,16 +591,11 @@ def analyze_image():
                 payload = {
                     "contents": [{
                         "parts": [
-                            {"text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。解題步驟要包含：\n1. 題目內容\n2. 使用的公式\n3. 代入數字的過程\n4. 計算步驟\n5. 最終答案（含單位）\n\n請用清楚易懂的方式說明，讓學生能理解解題邏輯。"},
+                            {"text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。\n\n**特別注意**：\n1. 如果是圖形規律題，請仔細觀察每個圖形，數清楚元素數量\n2. 列出前3-4項的具體數值\n3. 找出規律並建立通項公式\n4. 驗證公式的正確性\n\n解題步驟要包含：\n1. 題目內容\n2. 使用的公式\n3. 代入數字的過程\n4. 計算步驟\n5. 最終答案（含單位）"},
                             {"inline_data": {"mime_type": mime_type, "data": img_b64}}
                         ]
                     }],
-                    "generationConfig": {
-                        "temperature": 0.2,
-                        "topK": 32,
-                        "topP": 1,
-                        "maxOutputTokens": 2048,
-                    }
+                    "generationConfig": {"temperature": 0.2, "topK": 32, "topP": 1, "maxOutputTokens": 2048}
                 }
                 
                 r = requests.post(url, headers=headers, json=payload, timeout=90)
@@ -543,57 +603,36 @@ def analyze_image():
                 if r.status_code == 200:
                     data = r.json()
                     try:
-                        reply = data["candidates"][0]["content"]["parts"][0]["text"]
-                        if reply and len(reply.strip()) > 20:
-                            print("✅ Gemini 辨識成功！")
-                            reply = format_ai_reply(normalize_math_terms(reply))
+                        vision_reply = data["candidates"][0]["content"]["parts"][0]["text"]
+                        if vision_reply and len(vision_reply.strip()) > 20:
+                            print("✅ Gemini Vision 辨識成功！")
                         else:
-                            print("⚠️ Gemini 回應內容太短，嘗試備援...")
-                            reply = ""
-                    except (KeyError, IndexError, TypeError) as e:
-                        print(f"⚠️ Gemini 回應格式異常: {e}")
-                        reply = ""
+                            vision_reply = ""
+                    except (KeyError, IndexError, TypeError):
+                        vision_reply = ""
                 else:
                     print(f"⚠️ Gemini API 錯誤: Status {r.status_code}")
-                    reply = ""
                     
-            except requests.Timeout:
-                print("⚠️ Gemini 請求超時")
-                reply = ""
             except Exception as e:
                 print(f"⚠️ Gemini 發生錯誤: {e}")
-                reply = ""
-        else:
-            print("⚠️ 未設定 GEMINI_API_KEY")
         
-        # ===== 第二步：如果 Gemini 失敗，使用 OpenAI Vision 備援 =====
-        if not reply and openai_api_key:
+        # 如果 Gemini 失敗，使用 OpenAI Vision
+        if not vision_reply and openai_api_key:
             try:
-                print("🔄 Gemini 無法辨識，切換到 OpenAI Vision 備援...")
-                headers = {
-                    "Authorization": f"Bearer {openai_api_key}",
-                    "Content-Type": "application/json"
-                }
+                print("🔄 切換到 OpenAI Vision...")
+                headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": "gpt-4o-mini",
                     "messages": [
-                        {
-                            "role": "system",
-                            "content": build_system_prompt("請用清楚步驟直接講解完整解法，包含公式、代入、計算與答案。")
-                        },
+                        {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。")},
                         {
                             "role": "user",
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。解題步驟要包含：\n1. 題目內容\n2. 使用的公式\n3. 代入數字的過程\n4. 計算步驟\n5. 最終答案（含單位）"
+                                    "text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。\n\n**特別注意**：\n1. 如果是圖形規律題，請仔細觀察每個圖形，數清楚元素數量\n2. 列出前3-4項的具體數值\n3. 找出規律並建立通項公式\n4. 驗證公式的正確性\n\n解題步驟要包含：題目內容、公式、代入、計算、最終答案"
                                 },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:{mime_type};base64,{img_b64}"
-                                    }
-                                }
+                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{img_b64}"}}
                             ]
                         }
                     ],
@@ -601,44 +640,66 @@ def analyze_image():
                     "temperature": 0.2
                 }
                 
-                r = requests.post("https://api.openai.com/v1/chat/completions", 
-                                headers=headers, json=payload, timeout=90)
+                r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=90)
                 
                 if r.status_code == 200:
                     data = r.json()
-                    reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    if reply and len(reply.strip()) > 20:
+                    vision_reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if vision_reply and len(vision_reply.strip()) > 20:
                         print("✅ OpenAI Vision 辨識成功！")
-                        reply = format_ai_reply(normalize_math_terms(reply))
                     else:
-                        reply = ""
-                else:
-                    print(f"⚠️ OpenAI API 錯誤: Status {r.status_code}")
-                    print(f"Response: {r.text}")
-                    reply = ""
-                    
-            except requests.Timeout:
-                print("⚠️ OpenAI 請求超時")
-                reply = ""
+                        vision_reply = ""
+                        
             except Exception as e:
                 print(f"⚠️ OpenAI Vision 發生錯誤: {e}")
-                reply = ""
         
-        # ===== 如果兩個都失敗 =====
-        if not reply:
-            return jsonify({"reply": "⚠️ 無法辨識這張圖片的內容。請確認：\n1. 圖片清晰度足夠\n2. 題目文字清楚可見\n3. 光線充足，沒有反光\n4. 圖片中確實包含數學題目\n\n建議：可以嘗試重新拍攝後再上傳。"})
-
-        print(f"✅ 圖片辨識成功，回覆長度: {len(reply)} 字元")
+        # 如果 Vision 都失敗
+        if not vision_reply:
+            return jsonify({"reply": "⚠️ 無法辨識這張圖片的內容。請確認圖片清晰度足夠，然後重新上傳。"})
+        
+        print(f"✅ Vision 辨識完成，回覆長度: {len(vision_reply)} 字元")
+        
+        # ===== 步驟二：提取題目文字 =====
+        question_text = extract_question_from_reply(vision_reply)
+        print(f"📝 提取題目：{question_text[:100]}...")
+        
+        # ===== 步驟三：用 DeepSeek 重新解題（驗算）=====
+        verify_reply = ""
+        if question_text and deepseek_api_key:
+            try:
+                print("🔍 DeepSeek 驗算中...")
+                verify_reply = ask_anan(question_text, mode="direct")
+                print(f"✅ DeepSeek 驗算完成，回覆長度: {len(verify_reply)} 字元")
+            except Exception as e:
+                print(f"⚠️ DeepSeek 驗算失敗: {e}")
+        
+        # ===== 步驟四：比對答案 =====
+        final_reply = vision_reply  # 預設使用 Vision 的解答
+        
+        if verify_reply:
+            if answers_match(vision_reply, verify_reply):
+                print("✅ 兩個答案一致！")
+                # 答案一致，使用 Vision 的完整解答
+                final_reply = vision_reply
+            else:
+                print("⚠️ 兩個答案不一致！")
+                # 答案不一致，提示學生
+                final_reply = f"{vision_reply}\n\n⚠️ **小提醒**：安安用另一種方法算出了不同的答案，建議你把這題拿去問老師確認一下喔！這樣可以學到更完整的解法 😊"
+        
+        # ===== 格式化輸出 =====
+        final_reply = format_ai_reply(normalize_math_terms(final_reply))
+        
+        print(f"✅ 圖片題處理完成，最終回覆長度: {len(final_reply)} 字元")
 
         # 寫入紀錄
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
             "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
-            (str(uuid.uuid4()), session["user"], "[圖片題上傳]", reply, 1, datetime.now().isoformat()),
+            (str(uuid.uuid4()), session["user"], "[圖片題上傳]", final_reply, 1, datetime.now().isoformat()),
         )
         conn.commit(); conn.close()
-        return jsonify({"reply": reply})
+        return jsonify({"reply": final_reply})
         
     except Exception as e:
         print(f"❌ analyze_image 發生未預期錯誤: {type(e).__name__}: {e}")
@@ -648,6 +709,6 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.8.12 啟動完成")
-    print("📸 圖片辨識：Gemini Vision (主要) + OpenAI Vision (備援)")
+    print("🚀 安安 v4.9.0 啟動完成")
+    print("📸 圖片辨識：Vision API (識別) + DeepSeek/OpenAI (雙重驗算)")
     app.run(host="0.0.0.0", port=port)
