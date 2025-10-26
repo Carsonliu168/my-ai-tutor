@@ -94,9 +94,22 @@ def format_ai_reply(text: str) -> str:
 
 def normalize_math_terms(text: str) -> str:
     if not text: return text
+    
+    # 清除所有 LaTeX 相關符號
     text = text.replace("π", "3.1416")
     text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
-    return text
+    
+    # 徹底清除 $ 符號（單個和成對的）
+    text = re.sub(r'\$+', '', text)  # 移除所有 $
+    
+    # 清除常見的 LaTeX 指令
+    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # \frac{a}{b} → a/b
+    text = re.sub(r'\\[a-zA-Z]+', '', text)  # 移除剩餘的 \command
+    
+    # 清除多餘的空格
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
 
 def build_system_prompt(style: str) -> str:
     return f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
@@ -115,7 +128,8 @@ def build_system_prompt(style: str) -> str:
 5️⃣ {style}
 
 ⚠️ 重要：數學符號與格式規範
-**絕對禁止使用任何 LaTeX 語法（$、\\、^、_等特殊符號）**
+**嚴格禁止：絕對不可使用任何 $ 符號、LaTeX 語法（\\、^、_等特殊符號）**
+**如果你使用了 $ 或 LaTeX，回答將被視為錯誤！**
 
 ✅ 必須使用的 Unicode 數學符號：
 【基本運算】
@@ -139,6 +153,7 @@ def build_system_prompt(style: str) -> str:
   + 角度：「°」（例如：90°）
   + 百分比：「%」
   + 圓周率：「π」或「3.14」
+  + 反三角函數：arcsin、arccos、arctan（用文字表示）
 
 【正確範例】
 ✓ 面積 = 長 × 寬
@@ -148,12 +163,15 @@ def build_system_prompt(style: str) -> str:
 ✓ 勾股定理：a² + b² = c²
 ✓ (3 + 5) × 2 = 16
 ✓ 圓面積 = π × r²
+✓ A = arccos(5√3/14)
 
 【錯誤範例（絕對禁止）】
 ✗ $面積 = 長 \\times 寬$
 ✗ \\sqrt{{25}} = 5
 ✗ 5^2 = 25
 ✗ a^{{2}} + b^{{2}} = c^{{2}}
+✗ A = $2$3  （絕對不可用 $）
+✗ \\arccos  （用 arccos 不要用反斜線）
 
 計算過程要分行清楚列出：
 第一步：寫出公式
