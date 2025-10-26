@@ -462,6 +462,7 @@ def clear():
 
 # ===== 圖片題（Gemini Vision → OpenAI Vision 備援）=====
 @app.route("/analyze_image", methods=["POST"])
+@app.route("/upload", methods=["POST"])  # 前端使用的路由
 def analyze_image():
     if "user" not in session:
         return jsonify({"reply": "⚠️ 請先登入後再上傳題目喔～"})
