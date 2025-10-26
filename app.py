@@ -606,45 +606,10 @@ def analyze_image():
 
         vision_reply = ""
         
-        # ===== 步驟一：用 Vision API 識別圖片並解題 =====
-        # 優先嘗試 Gemini
-        if gemini_api_key:
+        # ===== 圖片題直接使用 OpenAI Vision（最準確）=====
+        if openai_api_key:
             try:
-                print("📸 使用 Gemini Vision 辨識...")
-                headers = {"Content-Type": "application/json"}
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
-                payload = {
-                    "contents": [{
-                        "parts": [
-                            {"text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。\n\n**特別注意**：\n1. 如果是圖形規律題，請仔細觀察每個圖形，數清楚元素數量\n2. 列出前3-4項的具體數值\n3. 找出規律並建立通項公式\n4. 驗證公式的正確性\n\n解題步驟要包含：\n1. 題目內容\n2. 使用的公式\n3. 代入數字的過程\n4. 計算步驟\n5. 最終答案（含單位）"},
-                            {"inline_data": {"mime_type": mime_type, "data": img_b64}}
-                        ]
-                    }],
-                    "generationConfig": {"temperature": 0.2, "topK": 32, "topP": 1, "maxOutputTokens": 2048}
-                }
-                
-                r = requests.post(url, headers=headers, json=payload, timeout=90)
-                
-                if r.status_code == 200:
-                    data = r.json()
-                    try:
-                        vision_reply = data["candidates"][0]["content"]["parts"][0]["text"]
-                        if vision_reply and len(vision_reply.strip()) > 20:
-                            print("✅ Gemini Vision 辨識成功！")
-                        else:
-                            vision_reply = ""
-                    except (KeyError, IndexError, TypeError):
-                        vision_reply = ""
-                else:
-                    print(f"⚠️ Gemini API 錯誤: Status {r.status_code}")
-                    
-            except Exception as e:
-                print(f"⚠️ Gemini 發生錯誤: {e}")
-        
-        # 如果 Gemini 失敗，使用 OpenAI Vision
-        if not vision_reply and openai_api_key:
-            try:
-                print("🔄 切換到 OpenAI Vision...")
+                print("📸 使用 OpenAI Vision 辨識並解題...")
                 headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": "gpt-4o-mini",
@@ -684,32 +649,8 @@ def analyze_image():
         
         print(f"✅ Vision 辨識完成，回覆長度: {len(vision_reply)} 字元")
         
-        # ===== 步驟二：提取題目文字 =====
-        question_text = extract_question_from_reply(vision_reply)
-        print(f"📝 提取題目：{question_text[:100]}...")
-        
-        # ===== 步驟三：用 DeepSeek 重新解題（驗算）=====
-        verify_reply = ""
-        if question_text and deepseek_api_key:
-            try:
-                print("🔍 DeepSeek 驗算中...")
-                verify_reply = ask_anan(question_text, mode="direct")
-                print(f"✅ DeepSeek 驗算完成，回覆長度: {len(verify_reply)} 字元")
-            except Exception as e:
-                print(f"⚠️ DeepSeek 驗算失敗: {e}")
-        
-        # ===== 步驟四：比對答案 =====
-        final_reply = vision_reply  # 預設使用 Vision 的解答
-        
-        if verify_reply:
-            if answers_match(vision_reply, verify_reply):
-                print("✅ 兩個答案一致！")
-                # 答案一致，使用 Vision 的完整解答
-                final_reply = vision_reply
-            else:
-                print("⚠️ 兩個答案不一致！")
-                # 答案不一致，提示學生
-                final_reply = f"{vision_reply}\n\n⚠️ **小提醒**：安安用另一種方法算出了不同的答案，建議你把這題拿去問老師確認一下喔！這樣可以學到更完整的解法 😊"
+        # ===== 直接使用 OpenAI 的解答（不需驗算）=====
+        final_reply = vision_reply
         
         # ===== 格式化輸出 =====
         final_reply = format_ai_reply(normalize_math_terms(final_reply))
