@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.8.10-auto-reset (登入+登出雙重自動清空)
+# v4.8.12 (修復清除紀錄 + 圖片辨識加入 OpenAI Vision 備援)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.8.10-auto-reset）")
+print("✅ [安安] 資料庫就緒（v4.8.12）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
@@ -247,9 +247,9 @@ def login():
             ok = False
         if not ok and len(stored_pw) < 60:
             if password == stored_pw:
-                new_hash = hash_password(password).decode("utf-8")
                 conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
+                new_hash = hash_password(password).decode("utf-8")
                 c.execute("UPDATE users SET password=? WHERE username=?", (new_hash, username))
                 conn.commit(); conn.close()
                 ok = True
@@ -441,48 +441,169 @@ def admin_panel():
     conn.close()
     return render_template("admin.html", users=users, records=records)
 
+# ✅ 修改後的清除對話路由（不登出）
 @app.route("/clear")
 def clear():
-    session.clear()
-    return redirect("/login")
+    """清除對話紀錄和暫存狀態，但保持登入狀態"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    # 只清除對話相關的 session，保留登入資訊
+    session.pop("chat_history", None)
+    session.pop("current_problem", None)
+    session.pop("confusion_count", None)
+    
+    # 保留以下 session（不清除）：
+    # - user（登入帳號）
+    # - role（使用者角色）
+    # - questionnaire_completed（問卷狀態）
+    
+    return redirect("/")
 
-# ===== 圖片題（Gemini Vision）=====
+# ===== 圖片題（Gemini Vision → OpenAI Vision 備援）=====
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():
     if "user" not in session:
         return jsonify({"reply": "⚠️ 請先登入後再上傳題目喔～"})
+    
     try:
         file = request.files.get("image")
         if not file:
             return jsonify({"reply": "⚠️ 沒有收到圖片檔案喔～"})
 
-        img_b64 = base64.b64encode(file.read()).decode("utf-8")
+        # 讀取圖片並轉換為 base64
+        img_bytes = file.read()
+        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+        
+        # 自動判斷圖片格式
+        filename = file.filename.lower()
+        if filename.endswith('.png'):
+            mime_type = "image/png"
+        elif filename.endswith(('.jpg', '.jpeg')):
+            mime_type = "image/jpeg"
+        elif filename.endswith('.webp'):
+            mime_type = "image/webp"
+        else:
+            mime_type = "image/jpeg"  # 預設使用 jpeg
 
-        if not gemini_api_key:
-            return jsonify({"reply": "⚠️ 未設定 GEMINI_API_KEY，無法辨識圖片。"})
+        print(f"🔍 正在辨識圖片... (格式: {mime_type}, 大小: {len(img_bytes)} bytes)")
 
-        headers = {"Content-Type": "application/json"}
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": "這是一張數學題的照片，請先將題目轉成文字，然後用繁體中文詳細解題（包含公式、代入與最終答案）。"},
-                    {"inline_data": {"mime_type": "image/png", "data": img_b64}}
-                ]
-            }]
-        }
-        r = requests.post(url, headers=headers, json=payload, timeout=60)
-        data = r.json()
         reply = ""
-        try:
-            reply = data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
-            pass
+        
+        # ===== 第一步：嘗試用 Gemini 識別 + 解題 =====
+        if gemini_api_key:
+            try:
+                print("📸 使用 Gemini Vision 辨識...")
+                headers = {"Content-Type": "application/json"}
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。解題步驟要包含：\n1. 題目內容\n2. 使用的公式\n3. 代入數字的過程\n4. 計算步驟\n5. 最終答案（含單位）\n\n請用清楚易懂的方式說明，讓學生能理解解題邏輯。"},
+                            {"inline_data": {"mime_type": mime_type, "data": img_b64}}
+                        ]
+                    }],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "topK": 32,
+                        "topP": 1,
+                        "maxOutputTokens": 2048,
+                    }
+                }
+                
+                r = requests.post(url, headers=headers, json=payload, timeout=90)
+                
+                if r.status_code == 200:
+                    data = r.json()
+                    try:
+                        reply = data["candidates"][0]["content"]["parts"][0]["text"]
+                        if reply and len(reply.strip()) > 20:
+                            print("✅ Gemini 辨識成功！")
+                            reply = format_ai_reply(normalize_math_terms(reply))
+                        else:
+                            print("⚠️ Gemini 回應內容太短，嘗試備援...")
+                            reply = ""
+                    except (KeyError, IndexError, TypeError) as e:
+                        print(f"⚠️ Gemini 回應格式異常: {e}")
+                        reply = ""
+                else:
+                    print(f"⚠️ Gemini API 錯誤: Status {r.status_code}")
+                    reply = ""
+                    
+            except requests.Timeout:
+                print("⚠️ Gemini 請求超時")
+                reply = ""
+            except Exception as e:
+                print(f"⚠️ Gemini 發生錯誤: {e}")
+                reply = ""
+        else:
+            print("⚠️ 未設定 GEMINI_API_KEY")
+        
+        # ===== 第二步：如果 Gemini 失敗，使用 OpenAI Vision 備援 =====
+        if not reply and openai_api_key:
+            try:
+                print("🔄 Gemini 無法辨識，切換到 OpenAI Vision 備援...")
+                headers = {
+                    "Authorization": f"Bearer {openai_api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": build_system_prompt("請用清楚步驟直接講解完整解法，包含公式、代入、計算與答案。")
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。解題步驟要包含：\n1. 題目內容\n2. 使用的公式\n3. 代入數字的過程\n4. 計算步驟\n5. 最終答案（含單位）"
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime_type};base64,{img_b64}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "max_tokens": 2000,
+                    "temperature": 0.2
+                }
+                
+                r = requests.post("https://api.openai.com/v1/chat/completions", 
+                                headers=headers, json=payload, timeout=90)
+                
+                if r.status_code == 200:
+                    data = r.json()
+                    reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if reply and len(reply.strip()) > 20:
+                        print("✅ OpenAI Vision 辨識成功！")
+                        reply = format_ai_reply(normalize_math_terms(reply))
+                    else:
+                        reply = ""
+                else:
+                    print(f"⚠️ OpenAI API 錯誤: Status {r.status_code}")
+                    print(f"Response: {r.text}")
+                    reply = ""
+                    
+            except requests.Timeout:
+                print("⚠️ OpenAI 請求超時")
+                reply = ""
+            except Exception as e:
+                print(f"⚠️ OpenAI Vision 發生錯誤: {e}")
+                reply = ""
+        
+        # ===== 如果兩個都失敗 =====
         if not reply:
-            reply = "⚠️ 無法辨識這張圖片的內容，請換一張清晰的照片再試看看。"
+            return jsonify({"reply": "⚠️ 無法辨識這張圖片的內容。請確認：\n1. 圖片清晰度足夠\n2. 題目文字清楚可見\n3. 光線充足，沒有反光\n4. 圖片中確實包含數學題目\n\n建議：可以嘗試重新拍攝後再上傳。"})
 
-        reply = format_ai_reply(normalize_math_terms(reply))
+        print(f"✅ 圖片辨識成功，回覆長度: {len(reply)} 字元")
 
+        # 寫入紀錄
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
@@ -491,11 +612,15 @@ def analyze_image():
         )
         conn.commit(); conn.close()
         return jsonify({"reply": reply})
+        
     except Exception as e:
-        print("⚠️ analyze_image 錯誤：", e)
-        return jsonify({"reply": "⚠️ 圖片辨識失敗，請稍後再試。"})
+        print(f"❌ analyze_image 發生未預期錯誤: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"reply": f"⚠️ 圖片辨識發生錯誤，請稍後再試。\n錯誤類型: {type(e).__name__}"})
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.8.10-auto-reset 啟動完成")
+    print("🚀 安安 v4.8.12 啟動完成")
+    print("📸 圖片辨識：Gemini Vision (主要) + OpenAI Vision (備援)")
     app.run(host="0.0.0.0", port=port)
