@@ -468,8 +468,13 @@ def analyze_image():
         return jsonify({"reply": "⚠️ 請先登入後再上傳題目喔～"})
     
     try:
-        file = request.files.get("image")
+        # 嘗試多種可能的欄位名稱
+        file = request.files.get("image") or request.files.get("file") or request.files.get("photo")
+        
         if not file:
+            # Debug: 列出收到的所有欄位
+            available_fields = list(request.files.keys())
+            print(f"⚠️ 未收到圖片檔案。收到的欄位: {available_fields}")
             return jsonify({"reply": "⚠️ 沒有收到圖片檔案喔～"})
 
         # 讀取圖片並轉換為 base64
