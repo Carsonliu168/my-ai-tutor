@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.0 (圖片題雙重驗算機制)
+# v4.9.1 (三種風格差異化)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
@@ -82,40 +82,31 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.0 - 雙重驗算）")
+print("✅ [安安] 資料庫就緒（v4.9.1 - 三種風格差異化）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
     if not text: return text
     text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
     text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    # 不再處理 $，因為 normalize_math_terms() 已經清除了
     return text.strip()
 
 def normalize_math_terms(text: str) -> str:
     if not text: return text
     
-    # 先處理基本替換
     text = text.replace("π", "3.1416")
     text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
-    
-    # 徹底清除所有 $ 符號
     text = re.sub(r'\$+', '', text)
-    
-    # 清除常見的 LaTeX 指令
-    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # \frac{a}{b} → a/b
-    text = re.sub(r'\\[a-zA-Z]+', '', text)  # 移除剩餘的 \command
-    
-    # 清除 Markdown 標題符號 ### （但保留換行）
+    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)
+    text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    
-    # 只清除行內多餘空格，不破壞換行
-    text = re.sub(r'[ \t]+', ' ', text)  # 只清除空格和 Tab，保留 \n
+    text = re.sub(r'[ \t]+', ' ', text)
     
     return text.strip()
 
-def build_system_prompt(style: str) -> str:
-    return f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
+# ===== 🎯 修改 1: build_system_prompt 加入 profile_type 參數 =====
+def build_system_prompt(style: str, profile_type=None) -> str:
+    base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
 禁止開場寒暄或自我介紹，直接開始教學。
 
 教學風格：
@@ -130,7 +121,7 @@ def build_system_prompt(style: str) -> str:
 4️⃣ 嚴禁閒聊與自介。
 5️⃣ {style}
 
-🎯 新增核心規則：
+🎯 核心規則：
 【簡潔回答】
 - 直接回答學生的問題，不要過度延伸
 - 講解完就停止，等學生回應
@@ -149,15 +140,8 @@ def build_system_prompt(style: str) -> str:
 - 然後問：「還有其他數學問題想問我嗎？」或類似的開放式問題
 - 此時前一題的問答記憶結束，準備進入新的問答
 
-鼓勵話語範例：
-- 「太好了！很高興你理解了！😊 還有其他數學問題想問我嗎？」
-- 「太棒了！你學得很快！還有什麼想問的嗎？」
-- 「很好！你掌握得不錯！有其他題目需要幫忙嗎？」
-- 「讚！這個概念你搞定了！還想學什麼呢？」
-
 ⚠️ 重要：數學符號與格式規範
 **嚴格禁止：絕對不可使用任何 $ 符號、LaTeX 語法（\\、^、_等特殊符號）**
-**如果你使用了 $ 或 LaTeX，回答將被視為錯誤！**
 
 ✅ 必須使用的 Unicode 數學符號：
 【基本運算】
@@ -173,55 +157,71 @@ def build_system_prompt(style: str) -> str:
   + 立方：「³」（例如：2³ = 8）
   + 次方：用上標或文字（例如：2⁴ = 16 或「2的4次方」）
   + 分數：用斜線或文字（例如：1/2 或「二分之一」）
-  + 括號：「()」「[]」「{{}}」
-  + 小於/大於：「<」「>」「≤」「≥」
-  + 約等於：「≈」
-  + 不等於：「≠」
-  + 正負：「±」
-  + 角度：「°」（例如：90°）
-  + 百分比：「%」
   + 圓周率：「π」或「3.14」
-  + 反三角函數：arcsin、arccos、arctan（用文字表示）
-
-【正確範例】
-✓ 面積 = 長 × 寬
-✓ √25 = 5
-✓ 5² = 25
-✓ 2³ = 8
-✓ 勾股定理：a² + b² = c²
-✓ (3 + 5) × 2 = 16
-✓ 圓面積 = π × r²
-✓ A = arccos(5√3/14)
-
-【錯誤範例（絕對禁止）】
-✗ $面積 = 長 \\times 寬$
-✗ \\sqrt{{25}} = 5
-✗ 5^2 = 25
-✗ a^{{2}} + b^{{2}} = c^{{2}}
-✗ A = $2$3  （絕對不可用 $）
-✗ \\arccos  （用 arccos 不要用反斜線）
 
 計算過程要分行清楚列出：
 第一步：寫出公式
 第二步：代入數字
 第三步：計算結果
 第四步：標註單位
-
-範例回答格式：
-「我們來計算這個長方形的面積！
-
-公式：面積 = 長 × 寬
-
-代入數字：
-面積 = 15公分 × 40公分
-面積 = 600平方公分
-
-答案是 600平方公分 ✓
-
-就像一張全家便利商店的發票大小，長15公分、寬40公分，面積就是600平方公分喔！」
 """
 
-def ask_anan(question: str, mode="socratic") -> str:
+    # ===== 根據學習風格添加專屬指示 =====
+    if profile_type == "邏輯戰略家":
+        base_prompt += """
+
+🎯 【邏輯戰略家專用】
+- 極簡風格，零廢話
+- 禁止使用 emoji
+- 不要舉生活例子（除非必要）
+- 直接給公式和步驟
+- 回答控制在 60 字以內
+- 格式：公式 → 代入 → 答案
+
+範例：
+問：圓面積公式？
+答：A = π × r²
+r=5 → A = 3.14 × 25 = 78.5 cm²
+"""
+    
+    elif profile_type == "創意視覺家":
+        base_prompt += """
+
+🎯 【創意視覺家專用】
+- 視覺化、故事化
+- 多用 emoji 🎨📐✨
+- 用生動比喻（披薩、珍奶、便利商店、夜市）
+- 可以說「想像一下」「你覺得」
+- 回答可以到 150 字
+- 生動有趣，讓學生有畫面
+
+範例：
+問：圓面積公式？
+答：🍕 想像一個披薩！圓面積 = π × 半徑²
+如果半徑 5 公分，就是 3.14 × 5 × 5 = 78.5 平方公分
+就像一個手掌大小的圓形！✨
+"""
+    
+    elif profile_type == "平衡大師":
+        base_prompt += """
+
+🎯 【平衡大師專用】
+- 結構化呈現
+- 公式 + 一個簡單應用
+- 回答控制在 100 字左右
+- 清楚但不冗長
+
+範例：
+問：圓面積公式？
+答：【公式】A = π × r²
+【應用】半徑 5cm → 面積 = 3.14 × 25 = 78.5 cm²
+就像一個小碗的大小！
+"""
+    
+    return base_prompt
+
+# ===== 🎯 修改 2: ask_anan 加入 profile_type 參數 =====
+def ask_anan(question: str, mode="socratic", profile_type=None) -> str:
     if len((question or "").strip()) < 5:
         mode = "direct"
     style = (
@@ -229,7 +229,7 @@ def ask_anan(question: str, mode="socratic") -> str:
         if mode == "socratic"
         else "請用清楚步驟直接講解完整解法，包含公式、代入、計算與答案。"
     )
-    system_prompt = build_system_prompt(style)
+    system_prompt = build_system_prompt(style, profile_type)
 
     # DeepSeek 主模型
     try:
@@ -273,67 +273,53 @@ def ask_anan(question: str, mode="socratic") -> str:
 
 # ===== 提取題目文字（從 Vision 回應中）=====
 def extract_question_from_reply(vision_reply: str) -> str:
-    """從 Vision API 的完整回應中提取題目文字"""
     if not vision_reply:
         return ""
     
-    # 嘗試找到「題目」相關的段落
     lines = vision_reply.split('\n')
     question_lines = []
     in_question_section = False
     
     for line in lines:
         line = line.strip()
-        # 開始收集題目
         if any(keyword in line for keyword in ['題目', '問題', '求', '計算', '若', '已知']):
             in_question_section = True
-        # 停止收集（遇到解題步驟）
         if any(keyword in line for keyword in ['解', '步驟', '公式', '代入', '計算', '答案']):
-            if question_lines:  # 如果已經收集到題目就停止
+            if question_lines:
                 break
-        # 收集題目內容
         if in_question_section and line and not line.startswith('#'):
             question_lines.append(line)
-            if len(question_lines) > 10:  # 最多收集10行
+            if len(question_lines) > 10:
                 break
     
-    # 如果沒找到，就用前幾行
     if not question_lines:
         question_lines = [line.strip() for line in lines[:5] if line.strip() and not line.strip().startswith('#')]
     
     question_text = ' '.join(question_lines)
-    # 清理
     question_text = re.sub(r'#{1,6}\s+', '', question_text)
-    question_text = question_text[:500]  # 限制長度
+    question_text = question_text[:500]
     
     return question_text.strip()
 
 # ===== 比對答案（簡單版本）=====
 def answers_match(reply1: str, reply2: str) -> bool:
-    """簡單比對兩個答案是否相近"""
     if not reply1 or not reply2:
         return False
     
-    # 提取數字
     def extract_numbers(text):
-        # 找出所有數字（包括小數）
         return re.findall(r'\d+\.?\d*', text)
     
     nums1 = extract_numbers(reply1)
     nums2 = extract_numbers(reply2)
     
-    # 如果兩邊都沒數字，無法比對
     if not nums1 or not nums2:
-        return True  # 預設認為一致（保守）
+        return True
     
-    # 取最後幾個數字（通常是答案）
     last_nums1 = nums1[-3:] if len(nums1) >= 3 else nums1
     last_nums2 = nums2[-3:] if len(nums2) >= 3 else nums2
     
-    # 檢查是否有重疊的數字
     common = set(last_nums1) & set(last_nums2)
     
-    # 如果有2個以上共同數字，認為答案相近
     return len(common) >= min(2, len(last_nums1), len(last_nums2))
 
 # ===== 登入 / 登出 =====
@@ -370,7 +356,6 @@ def login():
             session["role"] = role
             session["confusion_count"] = 0
             
-            # ✅ demo_user 每次登入時自動清空問卷（確保可重複測驗）
             if username == DEMO_USER:
                 conn2 = sqlite3.connect(DB_PATH)
                 c2 = conn2.cursor()
@@ -386,7 +371,6 @@ def login():
 
 @app.route("/logout")
 def logout():
-    # ✅ 如果是 demo_user,登出時自動清空問卷記錄
     username = session.get("user")
     if username == DEMO_USER:
         conn = sqlite3.connect(DB_PATH)
@@ -417,7 +401,6 @@ def submit_questionnaire():
     if not answers or len(answers) != 7:
         return jsonify({"success": False, "error": "答案格式錯誤"})
     
-    # 計算結果
     a_count = answers.count("A")
     b_count = answers.count("B")
     
@@ -428,7 +411,6 @@ def submit_questionnaire():
     else:
         profile_type = "平衡大師"
     
-    # 儲存到資料庫
     username = session.get("user")
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -459,7 +441,6 @@ def questionnaire_result():
                          result=result, 
                          description=description)
 
-# ✅ 新增:手動重新測驗路由
 @app.route("/reset_questionnaire")
 def reset_questionnaire():
     if "user" not in session:
@@ -474,26 +455,23 @@ def reset_questionnaire():
     
     return redirect("/questionnaire")
 
-# ===== 主互動（守門＋三段式不懂＋問卷檢查）=====
+# ===== 🎯 修改 3: 主互動路由 - 讀取風格並傳給 AI =====
 @app.route("/", methods=["GET", "POST"])
 def home():
-    # ✅ 強制登入檢查
     if "user" not in session:
         return redirect("/login")
     
-    # ✅ GET 請求時檢查是否需要填問卷
     if request.method == "GET":
         role = session.get("role")
-        if role != "admin":  # 只檢查非管理員
+        if role != "admin":
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
             row = c.execute("SELECT profile_type FROM users WHERE username=?", 
                           (session["user"],)).fetchone()
             conn.close()
-            if not row or not row[0]:  # 沒填過問卷
+            if not row or not row[0]:
                 return redirect("/questionnaire")
         
-        # 已登入且(是管理員 或 填過問卷) → 顯示聊天頁
         return render_template("index.html", username=session.get("user"), role=session.get("role"))
 
     # ===== POST 請求處理 =====
@@ -514,24 +492,40 @@ def home():
         if session.get("current_problem"):
             confusion_count += 1
             session["confusion_count"] = confusion_count
+            
+            # 讀取學生風格
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            row = c.execute("SELECT profile_type FROM users WHERE username=?", (session["user"],)).fetchone()
+            conn.close()
+            profile_type = row[0] if row else None
+            
             if confusion_count == 1:
                 followup = f"學生說他不太懂這題「{session['current_problem']}」，請換個角度、舉例或更簡單的方式再教一次。"
-                reply = ask_anan(followup, mode="direct")
+                reply = ask_anan(followup, mode="direct", profile_type=profile_type)
             elif confusion_count == 2:
                 followup = f"學生第二次說他還是不懂這題「{session['current_problem']}」，請再用不同方式簡短解釋，語氣更鼓勵。"
-                reply = ask_anan(followup, mode="direct")
+                reply = ask_anan(followup, mode="direct", profile_type=profile_type)
             else:
                 reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
         else:
             reply = "沒問題，我們可以換一題或再問別的問題喔～"
         return jsonify({"reply": format_ai_reply(reply)})
 
-    # 一般題目 → 模型
-    reply = format_ai_reply(ask_anan(msg, mode="socratic"))
+    # 讀取學生的學習風格
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    row = c.execute("SELECT profile_type FROM users WHERE username=?", (session["user"],)).fetchone()
+    conn.close()
+    profile_type = row[0] if row else None
+    
+    print(f"🎯 學生風格：{profile_type}")  # 除錯用
+
+    # 一般題目 → 模型（傳入風格）
+    reply = format_ai_reply(ask_anan(msg, mode="socratic", profile_type=profile_type))
     session["current_problem"] = msg
     session["confusion_count"] = 0
 
-    # 寫入紀錄
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
@@ -552,34 +546,25 @@ def admin_panel():
     conn.close()
     return render_template("admin.html", users=users, records=records)
 
-# ✅ 修改後的清除對話路由（不登出）
 @app.route("/clear")
 def clear():
-    """清除對話紀錄和暫存狀態，但保持登入狀態"""
     if "user" not in session:
         return redirect("/login")
     
-    # 只清除對話相關的 session，保留登入資訊
     session.pop("chat_history", None)
     session.pop("current_problem", None)
     session.pop("confusion_count", None)
     
-    # 保留以下 session（不清除）：
-    # - user（登入帳號）
-    # - role（使用者角色）
-    # - questionnaire_completed（問卷狀態）
-    
     return redirect("/")
 
-# ===== 圖片題（Vision 識別 + 雙重驗算）=====
+# ===== 圖片題（Vision 識別）=====
 @app.route("/analyze_image", methods=["POST"])
-@app.route("/upload", methods=["POST"])  # 前端使用的路由
+@app.route("/upload", methods=["POST"])
 def analyze_image():
     if "user" not in session:
         return jsonify({"reply": "⚠️ 請先登入後再上傳題目喔～"})
     
     try:
-        # 嘗試多種可能的欄位名稱
         file = request.files.get("image") or request.files.get("file") or request.files.get("photo")
         
         if not file:
@@ -587,11 +572,9 @@ def analyze_image():
             print(f"⚠️ 未收到圖片檔案。收到的欄位: {available_fields}")
             return jsonify({"reply": "⚠️ 沒有收到圖片檔案喔～"})
 
-        # 讀取圖片並轉換為 base64
         img_bytes = file.read()
         img_b64 = base64.b64encode(img_bytes).decode("utf-8")
         
-        # 自動判斷圖片格式
         filename = file.filename.lower()
         if filename.endswith('.png'):
             mime_type = "image/png"
@@ -606,7 +589,13 @@ def analyze_image():
 
         vision_reply = ""
         
-        # ===== 圖片題直接使用 OpenAI Vision（最準確）=====
+        # 讀取學生風格
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        row = c.execute("SELECT profile_type FROM users WHERE username=?", (session["user"],)).fetchone()
+        conn.close()
+        profile_type = row[0] if row else None
+        
         if openai_api_key:
             try:
                 print("📸 使用 OpenAI Vision 辨識並解題...")
@@ -614,7 +603,7 @@ def analyze_image():
                 payload = {
                     "model": "gpt-4o-mini",
                     "messages": [
-                        {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。")},
+                        {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。", profile_type)},
                         {
                             "role": "user",
                             "content": [
@@ -643,21 +632,16 @@ def analyze_image():
             except Exception as e:
                 print(f"⚠️ OpenAI Vision 發生錯誤: {e}")
         
-        # 如果 Vision 都失敗
         if not vision_reply:
             return jsonify({"reply": "⚠️ 無法辨識這張圖片的內容。請確認圖片清晰度足夠，然後重新上傳。"})
         
         print(f"✅ Vision 辨識完成，回覆長度: {len(vision_reply)} 字元")
         
-        # ===== 直接使用 OpenAI 的解答（不需驗算）=====
         final_reply = vision_reply
-        
-        # ===== 格式化輸出 =====
         final_reply = format_ai_reply(normalize_math_terms(final_reply))
         
         print(f"✅ 圖片題處理完成，最終回覆長度: {len(final_reply)} 字元")
 
-        # 寫入紀錄
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
@@ -675,6 +659,7 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.9.0 啟動完成")
-    print("📸 圖片辨識：Vision API (識別) + DeepSeek/OpenAI (雙重驗算)")
+    print("🚀 安安 v4.9.1 啟動完成（三種風格差異化）")
+    print("📸 圖片辨識：OpenAI Vision API")
+    print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     app.run(host="0.0.0.0", port=port)
