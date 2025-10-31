@@ -91,11 +91,17 @@ def auto_add_paragraphs(text: str) -> str:
     """
     if not text: return text
     
+    # 🆕 在 emoji 後面加空格（如果後面緊接著中文或英文）
+    text = re.sub(r'([\U0001F300-\U0001F9FF])([^\s\n])', r'\1 \2', text)
+    
     # 在中文句號、驚嘆號、問號後面加換行（如果後面還有內容且不是換行）
     text = re.sub(r'([。！？])([^。！？\n\s])', r'\1\n\n\2', text)
     
     # 在冒號後面加換行（定義、說明類）- 但要確保後面有實質內容
-    text = re.sub(r'(：)([^\n\s])', r'\1\n\2', text)
+    text = re.sub(r'(：)([^\n\s])', r'\1\n\n\2', text)
+    
+    # 🆕 在列表項目前加換行（如果前面不是換行）
+    text = re.sub(r'([^\n])(-\s+[^\n])', r'\1\n\2', text)
     
     # 在「---」分隔線前後加換行
     text = re.sub(r'([^\n])(---)', r'\1\n\n\2', text)
@@ -137,13 +143,13 @@ def normalize_math_terms(text: str) -> str:
 # ===== 文字格式化 =====
 def format_ai_reply(text: str) -> str:
     """
-    將 AI 回覆格式化為 HTML（移除列表符號，轉換換行）
+    將 AI 回覆格式化為 HTML（轉換換行為 <br>）
     """
     if not text: return text
     
-    # 移除列表符號（避免顯示成負號）
-    text = re.sub(r'^\s*[-•]\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
+    # 🔧 保留列表符號，不要移除（讓學生看到完整格式）
+    # 只移除行首多餘的空白
+    text = re.sub(r'^\s+', '', text, flags=re.MULTILINE)
     
     # 轉換換行為 HTML
     text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
@@ -265,11 +271,22 @@ r=5 → A = 3.14 × 25 = 78.5 cm²
 - 回答可以到 150 字
 - 生動有趣，讓學生有畫面
 
+⚠️ 重要格式規範：
+✅ emoji 後面一定要加空格
+✅ 每個段落之間空一行
+✅ 列表項目要換行分開
+✅ 公式和例子要分段
+
 範例：
 問：圓面積公式？
-答：🍕 想像一個披薩！圓面積 = π × 半徑²
-如果半徑 5 公分，就是 3.14 × 5 × 5 = 78.5 平方公分
-就像一個手掌大小的圓形！✨
+答：
+🍕 想像一個披薩！
+
+圓面積 = π × 半徑²
+
+如果半徑 5 公分：
+- 計算：3.14 × 5 × 5 = 78.5 平方公分
+- 就像一個手掌大小的圓形！✨
 """
     
     elif profile_type == "平衡大師":
