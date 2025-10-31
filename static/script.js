@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.2：串流回應 + 圖片預覽 + 簡化邏輯
+// v5.2.1：串流回應 + 圖片預覽 + 修復換行
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,9 +46,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🆕 更新串流訊息內容
+  // 🔧 修復：更新串流訊息內容（加入換行處理）
   function updateStreamMessage(messageElement, text) {
-    messageElement.innerHTML = autoFormatMath(text);
+    // 先處理換行符號，轉成 HTML 的 <br>
+    let formattedText = text.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+    // 再處理數學符號
+    messageElement.innerHTML = autoFormatMath(formattedText);
     chatBox.scrollTop = chatBox.scrollHeight;
     if (window.MathJax && window.MathJax.typesetPromise) {
       MathJax.typesetPromise([messageElement]);

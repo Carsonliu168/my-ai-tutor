@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.3 (串流回應 + 對話記憶)
+# v4.9.4 (修復對話記憶問題)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.3 - 串流回應 + 對話記憶）")
+print("✅ [安安] 資料庫就緒（v4.9.4 - 修復對話記憶）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
@@ -570,6 +570,7 @@ def stream_chat():
         session["confusion_count"] = 0
         session["chat_history"] = []
         session.pop("current_problem", None)
+        session.modified = True  # 🔧 確保 session 儲存
         
         reply = random.choice([
             "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
@@ -587,15 +588,20 @@ def stream_chat():
     # 處理「不懂」→ 使用對話記憶
     if "不懂" in message:
         confusion_count = session.get("confusion_count", 0)
+        current_problem = session.get("current_problem", "")
         
-        if session.get("current_problem"):
+        print(f"📝 current_problem: {current_problem}")  # 除錯
+        print(f"🔢 confusion_count: {confusion_count}")  # 除錯
+        
+        if current_problem:  # 🔧 修復：檢查 current_problem 而不是 session.get
             confusion_count += 1
             session["confusion_count"] = confusion_count
+            session.modified = True  # 🔧 確保 session 儲存
             
             if confusion_count == 1:
-                followup = "學生說他不太懂，請換個角度、舉例或更簡單的方式再教一次。"
+                followup = f"學生說他不太懂這個問題：「{current_problem}」，請換個角度、舉例或更簡單的方式再教一次。"
             elif confusion_count == 2:
-                followup = "學生第二次說他還是不懂，請再用不同方式簡短解釋，語氣更鼓勵。"
+                followup = f"學生第二次說他還是不懂這個問題：「{current_problem}」，請再用不同方式簡短解釋，語氣更鼓勵。"
             else:
                 reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
                 
@@ -626,6 +632,8 @@ def stream_chat():
                     
                     if len(session["chat_history"]) > 20:
                         session["chat_history"] = session["chat_history"][-20:]
+                    
+                    session.modified = True  # 🔧 確保 session 儲存
                     
                     yield "data: [DONE]\n\n"
                 except Exception as e:
@@ -665,8 +673,10 @@ def stream_chat():
             if len(session["chat_history"]) > 20:
                 session["chat_history"] = session["chat_history"][-20:]
             
+            # 🔧 修復：設定 current_problem（這是關鍵！）
             session["current_problem"] = message
             session["confusion_count"] = 0
+            session.modified = True  # 🔧 確保 session 儲存
             
             # 記錄到資料庫
             conn = sqlite3.connect(DB_PATH)
@@ -900,6 +910,11 @@ def analyze_image():
         
         if len(session["chat_history"]) > 20:
             session["chat_history"] = session["chat_history"][-20:]
+        
+        # 🔧 修復：圖片題也要設定 current_problem
+        session["current_problem"] = "[圖片題目]"
+        session["confusion_count"] = 0
+        session.modified = True
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -919,9 +934,10 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.9.3 啟動完成")
+    print("🚀 安安 v4.9.4 啟動完成")
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
+    print("🔧 修復：「我不懂」記憶功能")
     app.run(host="0.0.0.0", port=port)
