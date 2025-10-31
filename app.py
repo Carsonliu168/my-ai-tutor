@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.7 (加入分段格式要求)
+# v4.9.8 完整版 (自動分段 + 優化數學符號處理)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
@@ -55,7 +55,7 @@ def check_password(plain: str, hashed: bytes | str) -> bool:
         hashed = hashed.encode("utf-8")
     return bcrypt.checkpw(plain.encode("utf-8"), hashed)
 
-# ===== 內建預設帳號（確保可登入）=====
+# ===== 內建預設帳號 =====
 ADMIN_USER = os.getenv("ADMIN_USER", "anan_admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")
 DEMO_USER  = os.getenv("DEMO_USER", "demo_user")
@@ -82,27 +82,71 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.7 - 加入分段格式要求）")
+print("✅ [安安] 資料庫就緒（v4.9.8 完整版 - 自動分段 + 優化數學符號處理）")
 
-# ===== 文字格式化（<br> 正確渲染）=====
-def format_ai_reply(text: str) -> str:
-    if not text: return text
-    # 🔧 修復：移除列表符號（避免顯示成負號）
-    text = re.sub(r'^\s*[-•]\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
-    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    return text.strip()
-
-def normalize_math_terms(text: str) -> str:
+# ===== 🆕 自動分段函數 =====
+def auto_add_paragraphs(text: str) -> str:
+    """
+    在適當位置自動插入換行，讓回答更易讀
+    """
     if not text: return text
     
+    # 在中文句號、驚嘆號、問號後面加換行（如果後面還有內容且不是換行）
+    text = re.sub(r'([。！？])([^。！？\n\s])', r'\1\n\n\2', text)
+    
+    # 在冒號後面加換行（定義、說明類）- 但要確保後面有實質內容
+    text = re.sub(r'(：)([^\n\s])', r'\1\n\2', text)
+    
+    # 在「---」分隔線前後加換行
+    text = re.sub(r'([^\n])(---)', r'\1\n\n\2', text)
+    text = re.sub(r'(---)([^\n])', r'\1\n\n\2', text)
+    
+    # 移除多餘的連續換行（超過2個）
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    return text.strip()
+
+# ===== 🔧 優化版數學符號處理 =====
+def normalize_math_terms(text: str) -> str:
+    """
+    智慧處理數學符號，只移除 LaTeX 語法，保留一般文字中的符號
+    """
+    if not text: return text
+    
+    # 🔧 智慧處理 $ 符號：只移除 LaTeX 語法中的 $，保留「$50」這類用法
+    # 移除 $...$ 和 $$...$$ 格式（LaTeX 數學模式）
+    text = re.sub(r'\$\$(.+?)\$\$', r'\1', text)  # 移除 $$...$$
+    text = re.sub(r'\$([a-zA-Z\\{}_^]+.*?)\$', r'\1', text)  # 移除 $LaTeX$
+    
+    # 移除其他 LaTeX 語法
+    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # 移除 \command{...}
+    text = re.sub(r'\\[a-zA-Z]+', '', text)  # 移除 \command
+    
+    # 移除 Markdown 標題符號
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # 數學符號標準化（保持不變）
     text = text.replace("π", "3.1416")
     text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
-    text = re.sub(r'\$+', '', text)
-    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)
-    text = re.sub(r'\\[a-zA-Z]+', '', text)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # 移除多餘空格
     text = re.sub(r'[ \t]+', ' ', text)
+    
+    return text.strip()
+
+# ===== 文字格式化 =====
+def format_ai_reply(text: str) -> str:
+    """
+    將 AI 回覆格式化為 HTML（移除列表符號，轉換換行）
+    """
+    if not text: return text
+    
+    # 移除列表符號（避免顯示成負號）
+    text = re.sub(r'^\s*[-•]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
+    
+    # 轉換換行為 HTML
+    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
     
     return text.strip()
 
@@ -305,11 +349,15 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                             
                             if content:
                                 full_content += content
+                                # 🔧 逐字輸出時先處理數學符號
                                 yield normalize_math_terms(content)
                         except json.JSONDecodeError:
                             continue
             
-            return full_content
+            # 🆕 回傳完整內容（加入自動分段）
+            # 注意：這個 return 值在 generator 中不會被直接使用
+            # 但我們保留它以便在需要時可以取得完整內容
+            return auto_add_paragraphs(normalize_math_terms(full_content))
         else:
             raise Exception(f"DeepSeek API 錯誤: {response.status_code}")
             
@@ -359,7 +407,7 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                             except json.JSONDecodeError:
                                 continue
                 
-                return full_content
+                return auto_add_paragraphs(normalize_math_terms(full_content))
             else:
                 raise Exception(f"OpenAI API 錯誤: {response.status_code}")
                 
@@ -401,7 +449,9 @@ def ask_anan(question: str, mode="socratic", profile_type=None, history=None) ->
         r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
         reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
         if reply:
-            return normalize_math_terms(reply)
+            # 🆕 加入自動分段處理
+            reply = auto_add_paragraphs(normalize_math_terms(reply))
+            return reply
     except Exception as e:
         print("DeepSeek 失敗:", e)
 
@@ -418,7 +468,9 @@ def ask_anan(question: str, mode="socratic", profile_type=None, history=None) ->
         r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=40)
         reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
         if reply:
-            return normalize_math_terms(reply)
+            # 🆕 加入自動分段處理
+            reply = auto_add_paragraphs(normalize_math_terms(reply))
+            return reply
     except Exception as e:
         print("OpenAI 備援失敗:", e)
 
@@ -558,7 +610,7 @@ def reset_questionnaire():
     
     return redirect("/questionnaire")
 
-# ===== 🔧 完全修復：串流路由 =====
+# ===== 🔧 串流路由 =====
 @app.route("/stream")
 def stream_chat():
     """
@@ -671,10 +723,10 @@ def stream_chat():
             
             return Response(stream_with_context(simple_stream()), mimetype='text/event-stream')
     
-    # 🔧 關鍵修復：一般問題 - 在 generator 之前設定 session
+    # 🔧 一般問題 - 在 generator 之前設定 session
     session["current_problem"] = message
     session["confusion_count"] = 0
-    print(f"✅ 已設定 current_problem: {message[:50]}...")  # 除錯訊息
+    print(f"✅ 已設定 current_problem: {message[:50]}...")
     
     # 一般問題 → 串流回應
     def generate():
@@ -691,7 +743,7 @@ def stream_chat():
                 full_reply += chunk
                 yield f"data: {chunk}\n\n"
             
-            # 記錄對話（不再在這裡設定 current_problem，已經在外面設定了）
+            # 記錄對話
             session["chat_history"].append({"role": "user", "content": message})
             session["chat_history"].append({"role": "assistant", "content": full_reply})
             
@@ -905,6 +957,8 @@ def analyze_image():
                     vision_reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     if vision_reply and len(vision_reply.strip()) > 20:
                         print("✅ OpenAI Vision 辨識成功！")
+                        # 🆕 加入自動分段處理
+                        vision_reply = auto_add_paragraphs(normalize_math_terms(vision_reply))
                     else:
                         vision_reply = ""
                         
@@ -916,8 +970,7 @@ def analyze_image():
         
         print(f"✅ Vision 辨識完成，回覆長度: {len(vision_reply)} 字元")
         
-        final_reply = vision_reply
-        final_reply = format_ai_reply(normalize_math_terms(final_reply))
+        final_reply = format_ai_reply(vision_reply)
         
         print(f"✅ 圖片題處理完成，最終回覆長度: {len(final_reply)} 字元")
 
@@ -931,10 +984,10 @@ def analyze_image():
         if len(session["chat_history"]) > 20:
             session["chat_history"] = session["chat_history"][-20:]
         
-        # 🔧 修復：圖片題也要設定 current_problem
+        # 圖片題也要設定 current_problem
         session["current_problem"] = "[圖片題目]"
         session["confusion_count"] = 0
-        print(f"✅ 圖片題已設定 current_problem")  # 除錯訊息
+        print(f"✅ 圖片題已設定 current_problem")
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -954,10 +1007,14 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.9.7 啟動完成")
+    print("=" * 60)
+    print("🚀 安安 v4.9.8 完整版啟動完成")
+    print("=" * 60)
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
-    print("📝 格式改進：明確要求 AI 分段回答")
+    print("📝 自動分段：已啟用（智慧換行優化）")
+    print("🔧 數學符號：優化處理（保留一般文字中的符號）")
+    print("=" * 60)
     app.run(host="0.0.0.0", port=port)
