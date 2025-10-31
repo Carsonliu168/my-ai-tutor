@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.4 (修復對話記憶問題)
+# v4.9.6 (修復記憶 + 列表符號)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
@@ -82,11 +82,13 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.4 - 修復對話記憶）")
+print("✅ [安安] 資料庫就緒（v4.9.6 - 修復記憶+列表符號）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
     if not text: return text
+    # 🔧 修復：移除列表符號（避免顯示成負號）
+    text = re.sub(r'^\s*[-•]\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
     text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
     return text.strip()
@@ -250,14 +252,14 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
             "model": "deepseek-chat",
             "messages": messages,
             "temperature": 0.2,
-            "stream": True  # 🆕 啟用串流
+            "stream": True
         }
         
         response = requests.post(
             "https://api.deepseek.com/chat/completions", 
             headers=headers, 
             json=payload, 
-            stream=True,  # 🆕 接收串流
+            stream=True,
             timeout=60
         )
         
@@ -267,7 +269,7 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                 if line:
                     line_text = line.decode('utf-8')
                     if line_text.startswith('data: '):
-                        data_str = line_text[6:]  # 移除 'data: '
+                        data_str = line_text[6:]
                         
                         if data_str == '[DONE]':
                             break
@@ -279,12 +281,10 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                             
                             if content:
                                 full_content += content
-                                # 🆕 逐字 yield
                                 yield normalize_math_terms(content)
                         except json.JSONDecodeError:
                             continue
             
-            # 回傳完整內容（用於記錄）
             return full_content
         else:
             raise Exception(f"DeepSeek API 錯誤: {response.status_code}")
@@ -292,7 +292,7 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
     except Exception as e:
         print(f"DeepSeek 串流失敗: {e}")
         
-        # 🆕 OpenAI 備援（也用串流）
+        # OpenAI 備援
         try:
             if not openai_api_key:
                 raise RuntimeError("未設定 OPENAI_API_KEY")
@@ -433,7 +433,7 @@ def login():
             session["user"] = username
             session["role"] = role
             session["confusion_count"] = 0
-            session["chat_history"] = []  # 🆕 初始化對話記憶
+            session["chat_history"] = []
             
             if username == DEMO_USER:
                 conn2 = sqlite3.connect(DB_PATH)
@@ -534,7 +534,7 @@ def reset_questionnaire():
     
     return redirect("/questionnaire")
 
-# ===== 🆕 串流路由 =====
+# ===== 🔧 完全修復：串流路由 =====
 @app.route("/stream")
 def stream_chat():
     """
@@ -570,7 +570,6 @@ def stream_chat():
         session["confusion_count"] = 0
         session["chat_history"] = []
         session.pop("current_problem", None)
-        session.modified = True  # 🔧 確保 session 儲存
         
         reply = random.choice([
             "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
@@ -590,13 +589,12 @@ def stream_chat():
         confusion_count = session.get("confusion_count", 0)
         current_problem = session.get("current_problem", "")
         
-        print(f"📝 current_problem: {current_problem}")  # 除錯
-        print(f"🔢 confusion_count: {confusion_count}")  # 除錯
+        print(f"📝 current_problem: {current_problem}")
+        print(f"🔢 confusion_count: {confusion_count}")
         
-        if current_problem:  # 🔧 修復：檢查 current_problem 而不是 session.get
+        if current_problem:
             confusion_count += 1
             session["confusion_count"] = confusion_count
-            session.modified = True  # 🔧 確保 session 儲存
             
             if confusion_count == 1:
                 followup = f"學生說他不太懂這個問題：「{current_problem}」，請換個角度、舉例或更簡單的方式再教一次。"
@@ -633,8 +631,6 @@ def stream_chat():
                     if len(session["chat_history"]) > 20:
                         session["chat_history"] = session["chat_history"][-20:]
                     
-                    session.modified = True  # 🔧 確保 session 儲存
-                    
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     print(f"串流錯誤: {e}")
@@ -651,6 +647,11 @@ def stream_chat():
             
             return Response(stream_with_context(simple_stream()), mimetype='text/event-stream')
     
+    # 🔧 關鍵修復：一般問題 - 在 generator 之前設定 session
+    session["current_problem"] = message
+    session["confusion_count"] = 0
+    print(f"✅ 已設定 current_problem: {message[:50]}...")  # 除錯訊息
+    
     # 一般問題 → 串流回應
     def generate():
         full_reply = ""
@@ -666,17 +667,12 @@ def stream_chat():
                 full_reply += chunk
                 yield f"data: {chunk}\n\n"
             
-            # 記錄對話
+            # 記錄對話（不再在這裡設定 current_problem，已經在外面設定了）
             session["chat_history"].append({"role": "user", "content": message})
             session["chat_history"].append({"role": "assistant", "content": full_reply})
             
             if len(session["chat_history"]) > 20:
                 session["chat_history"] = session["chat_history"][-20:]
-            
-            # 🔧 修復：設定 current_problem（這是關鍵！）
-            session["current_problem"] = message
-            session["confusion_count"] = 0
-            session.modified = True  # 🔧 確保 session 儲存
             
             # 記錄到資料庫
             conn = sqlite3.connect(DB_PATH)
@@ -914,7 +910,7 @@ def analyze_image():
         # 🔧 修復：圖片題也要設定 current_problem
         session["current_problem"] = "[圖片題目]"
         session["confusion_count"] = 0
-        session.modified = True
+        print(f"✅ 圖片題已設定 current_problem")  # 除錯訊息
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -934,10 +930,10 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.9.4 啟動完成")
+    print("🚀 安安 v4.9.6 啟動完成")
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
-    print("🔧 修復：「我不懂」記憶功能")
+    print("🔧 修復：Session 在 Generator 前設定 + 移除列表符號")
     app.run(host="0.0.0.0", port=port)
