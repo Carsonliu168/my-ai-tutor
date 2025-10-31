@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.8 完整版 (自動分段 + 優化數學符號處理)
+# v4.9.9 最終版 (完整修正所有格式問題)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.8 完整版 - 自動分段 + 優化數學符號處理）")
+print("✅ [安安] 資料庫就緒（v4.9.9 最終版 - 完整修正所有格式問題）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -115,14 +115,16 @@ def auto_add_paragraphs(text: str) -> str:
 # ===== 🔧 優化版數學符號處理 =====
 def normalize_math_terms(text: str) -> str:
     """
-    智慧處理數學符號，只移除 LaTeX 語法，保留一般文字中的符號
+    智慧處理數學符號，移除所有 LaTeX 語法
     """
     if not text: return text
     
-    # 🔧 智慧處理 $ 符號：只移除 LaTeX 語法中的 $，保留「$50」這類用法
-    # 移除 $...$ 和 $$...$$ 格式（LaTeX 數學模式）
+    # 🔧 第一步：移除 LaTeX 數學模式 $$...$$ 和 $...$
     text = re.sub(r'\$\$(.+?)\$\$', r'\1', text)  # 移除 $$...$$
-    text = re.sub(r'\$([a-zA-Z\\{}_^]+.*?)\$', r'\1', text)  # 移除 $LaTeX$
+    text = re.sub(r'\$([^\$]+)\$', r'\1', text)  # 移除 $...$（任何內容）
+    
+    # 🔧 第二步：移除所有剩餘的單獨 $ 符號（包括 $2$ 這種）
+    text = re.sub(r'\$+', '', text)  # 移除所有剩餘的 $
     
     # 移除其他 LaTeX 語法
     text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # 移除 \command{...}
@@ -1025,13 +1027,14 @@ def analyze_image():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     print("=" * 60)
-    print("🚀 安安 v4.9.8 完整版啟動完成")
+    print("🚀 安安 v4.9.9 最終版啟動完成")
     print("=" * 60)
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
-    print("📝 自動分段：已啟用（智慧換行優化）")
-    print("🔧 數學符號：優化處理（保留一般文字中的符號）")
+    print("📝 自動分段：已啟用（emoji、列表、段落智慧換行）")
+    print("🔧 數學符號：完全修正（徹底移除所有 LaTeX 語法）")
+    print("✅ 格式優化：保留列表符號、正確顯示 emoji")
     print("=" * 60)
     app.run(host="0.0.0.0", port=port)
