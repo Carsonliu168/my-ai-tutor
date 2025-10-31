@@ -1,9 +1,9 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.1 (三種風格差異化)
+# v4.9.3 (串流回應 + 對話記憶)
 # ================================
 
-from flask import Flask, render_template, request, jsonify, redirect, session, url_for
+from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
 import os, json, base64, requests, sqlite3, uuid, re, random, bcrypt
 from datetime import datetime, timedelta
 
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.1 - 三種風格差異化）")
+print("✅ [安安] 資料庫就緒（v4.9.3 - 串流回應 + 對話記憶）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
@@ -104,7 +104,7 @@ def normalize_math_terms(text: str) -> str:
     
     return text.strip()
 
-# ===== 🎯 修改 1: build_system_prompt 加入 profile_type 參數 =====
+# ===== System Prompt 建構 =====
 def build_system_prompt(style: str, profile_type=None) -> str:
     base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
 禁止開場寒暄或自我介紹，直接開始教學。
@@ -220,10 +220,14 @@ r=5 → A = 3.14 × 25 = 78.5 cm²
     
     return base_prompt
 
-# ===== 🎯 修改 2: ask_anan 加入 profile_type 參數 =====
-def ask_anan(question: str, mode="socratic", profile_type=None) -> str:
+# ===== 🆕 串流版本：ask_anan_stream =====
+def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=None):
+    """
+    Generator 函數，逐字 yield AI 回應
+    """
     if len((question or "").strip()) < 5:
         mode = "direct"
+    
     style = (
         "採用蘇格拉底式提問法，引導學生一步步思考。"
         if mode == "socratic"
@@ -231,15 +235,143 @@ def ask_anan(question: str, mode="socratic", profile_type=None) -> str:
     )
     system_prompt = build_system_prompt(style, profile_type)
 
+    # 建構完整對話記錄
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    if history and isinstance(history, list):
+        messages.extend(history)
+    
+    messages.append({"role": "user", "content": question})
+
+    # 🆕 DeepSeek 串流模式
+    try:
+        headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "deepseek-chat",
+            "messages": messages,
+            "temperature": 0.2,
+            "stream": True  # 🆕 啟用串流
+        }
+        
+        response = requests.post(
+            "https://api.deepseek.com/chat/completions", 
+            headers=headers, 
+            json=payload, 
+            stream=True,  # 🆕 接收串流
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            full_content = ""
+            for line in response.iter_lines():
+                if line:
+                    line_text = line.decode('utf-8')
+                    if line_text.startswith('data: '):
+                        data_str = line_text[6:]  # 移除 'data: '
+                        
+                        if data_str == '[DONE]':
+                            break
+                        
+                        try:
+                            data = json.loads(data_str)
+                            delta = data.get('choices', [{}])[0].get('delta', {})
+                            content = delta.get('content', '')
+                            
+                            if content:
+                                full_content += content
+                                # 🆕 逐字 yield
+                                yield normalize_math_terms(content)
+                        except json.JSONDecodeError:
+                            continue
+            
+            # 回傳完整內容（用於記錄）
+            return full_content
+        else:
+            raise Exception(f"DeepSeek API 錯誤: {response.status_code}")
+            
+    except Exception as e:
+        print(f"DeepSeek 串流失敗: {e}")
+        
+        # 🆕 OpenAI 備援（也用串流）
+        try:
+            if not openai_api_key:
+                raise RuntimeError("未設定 OPENAI_API_KEY")
+            
+            headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": messages,
+                "temperature": 0.2,
+                "stream": True
+            }
+            
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                stream=True,
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                full_content = ""
+                for line in response.iter_lines():
+                    if line:
+                        line_text = line.decode('utf-8')
+                        if line_text.startswith('data: '):
+                            data_str = line_text[6:]
+                            
+                            if data_str == '[DONE]':
+                                break
+                            
+                            try:
+                                data = json.loads(data_str)
+                                delta = data.get('choices', [{}])[0].get('delta', {})
+                                content = delta.get('content', '')
+                                
+                                if content:
+                                    full_content += content
+                                    yield normalize_math_terms(content)
+                            except json.JSONDecodeError:
+                                continue
+                
+                return full_content
+            else:
+                raise Exception(f"OpenAI API 錯誤: {response.status_code}")
+                
+        except Exception as e2:
+            print(f"OpenAI 備援失敗: {e2}")
+            yield "[ERROR]安安暫時無法回應，請稍後再試。"
+            return ""
+
+# ===== 非串流版本：ask_anan (保留作為備援) =====
+def ask_anan(question: str, mode="socratic", profile_type=None, history=None) -> str:
+    """
+    傳統版本，用於圖片辨識等不需串流的場景
+    """
+    if len((question or "").strip()) < 5:
+        mode = "direct"
+    
+    style = (
+        "採用蘇格拉底式提問法，引導學生一步步思考。"
+        if mode == "socratic"
+        else "請用清楚步驟直接講解完整解法，包含公式、代入、計算與答案。"
+    )
+    system_prompt = build_system_prompt(style, profile_type)
+
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    if history and isinstance(history, list):
+        messages.extend(history)
+    
+    messages.append({"role": "user", "content": question})
+
     # DeepSeek 主模型
     try:
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
             "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question},
-            ],
+            "messages": messages,
             "temperature": 0.2,
         }
         r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
@@ -256,10 +388,7 @@ def ask_anan(question: str, mode="socratic", profile_type=None) -> str:
         headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
         payload2 = {
             "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question},
-            ],
+            "messages": messages,
             "temperature": 0.2,
         }
         r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload2, timeout=40)
@@ -270,57 +399,6 @@ def ask_anan(question: str, mode="socratic", profile_type=None) -> str:
         print("OpenAI 備援失敗:", e)
 
     return "（安安暫時沒回應，請稍後再試一次）"
-
-# ===== 提取題目文字（從 Vision 回應中）=====
-def extract_question_from_reply(vision_reply: str) -> str:
-    if not vision_reply:
-        return ""
-    
-    lines = vision_reply.split('\n')
-    question_lines = []
-    in_question_section = False
-    
-    for line in lines:
-        line = line.strip()
-        if any(keyword in line for keyword in ['題目', '問題', '求', '計算', '若', '已知']):
-            in_question_section = True
-        if any(keyword in line for keyword in ['解', '步驟', '公式', '代入', '計算', '答案']):
-            if question_lines:
-                break
-        if in_question_section and line and not line.startswith('#'):
-            question_lines.append(line)
-            if len(question_lines) > 10:
-                break
-    
-    if not question_lines:
-        question_lines = [line.strip() for line in lines[:5] if line.strip() and not line.strip().startswith('#')]
-    
-    question_text = ' '.join(question_lines)
-    question_text = re.sub(r'#{1,6}\s+', '', question_text)
-    question_text = question_text[:500]
-    
-    return question_text.strip()
-
-# ===== 比對答案（簡單版本）=====
-def answers_match(reply1: str, reply2: str) -> bool:
-    if not reply1 or not reply2:
-        return False
-    
-    def extract_numbers(text):
-        return re.findall(r'\d+\.?\d*', text)
-    
-    nums1 = extract_numbers(reply1)
-    nums2 = extract_numbers(reply2)
-    
-    if not nums1 or not nums2:
-        return True
-    
-    last_nums1 = nums1[-3:] if len(nums1) >= 3 else nums1
-    last_nums2 = nums2[-3:] if len(nums2) >= 3 else nums2
-    
-    common = set(last_nums1) & set(last_nums2)
-    
-    return len(common) >= min(2, len(last_nums1), len(last_nums2))
 
 # ===== 登入 / 登出 =====
 @app.route("/login", methods=["GET", "POST"])
@@ -355,6 +433,7 @@ def login():
             session["user"] = username
             session["role"] = role
             session["confusion_count"] = 0
+            session["chat_history"] = []  # 🆕 初始化對話記憶
             
             if username == DEMO_USER:
                 conn2 = sqlite3.connect(DB_PATH)
@@ -455,7 +534,159 @@ def reset_questionnaire():
     
     return redirect("/questionnaire")
 
-# ===== 🎯 修改 3: 主互動路由 - 讀取風格並傳給 AI =====
+# ===== 🆕 串流路由 =====
+@app.route("/stream")
+def stream_chat():
+    """
+    SSE 串流端點
+    """
+    if "user" not in session:
+        def error_stream():
+            yield "data: [ERROR]請先登入\n\n"
+        return Response(error_stream(), mimetype='text/event-stream')
+    
+    message = request.args.get("message", "").strip()
+    if not message:
+        def error_stream():
+            yield "data: [ERROR]訊息不能為空\n\n"
+        return Response(error_stream(), mimetype='text/event-stream')
+    
+    # 確保 chat_history 存在
+    if "chat_history" not in session:
+        session["chat_history"] = []
+    
+    # 讀取學生風格
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    row = c.execute("SELECT profile_type FROM users WHERE username=?", (session["user"],)).fetchone()
+    conn.close()
+    profile_type = row[0] if row else None
+    
+    print(f"🎯 學生風格：{profile_type}")
+    print(f"💬 串流訊息：{message[:50]}...")
+    
+    # 處理「懂了」→ 清空記憶
+    if "懂了" in message or "明白" in message or "了解" in message:
+        session["confusion_count"] = 0
+        session["chat_history"] = []
+        session.pop("current_problem", None)
+        
+        reply = random.choice([
+            "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
+            "安安老師為你鼓掌 👏 有新的題目要挑戰嗎？",
+            "很好～你已經掌握這個觀念了！繼續加油 💪",
+            "非常好！有其他問題隨時可以問我喔～"
+        ])
+        
+        def simple_stream():
+            yield f"data: {reply}\n\n"
+            yield "data: [DONE]\n\n"
+        
+        return Response(stream_with_context(simple_stream()), mimetype='text/event-stream')
+    
+    # 處理「不懂」→ 使用對話記憶
+    if "不懂" in message:
+        confusion_count = session.get("confusion_count", 0)
+        
+        if session.get("current_problem"):
+            confusion_count += 1
+            session["confusion_count"] = confusion_count
+            
+            if confusion_count == 1:
+                followup = "學生說他不太懂，請換個角度、舉例或更簡單的方式再教一次。"
+            elif confusion_count == 2:
+                followup = "學生第二次說他還是不懂，請再用不同方式簡短解釋，語氣更鼓勵。"
+            else:
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
+                
+                def simple_stream():
+                    yield f"data: {reply}\n\n"
+                    yield "data: [DONE]\n\n"
+                
+                return Response(stream_with_context(simple_stream()), mimetype='text/event-stream')
+            
+            # 用串流回應
+            def generate():
+                full_reply = ""
+                try:
+                    for chunk in ask_anan_stream(followup, mode="direct", 
+                                                 profile_type=profile_type, 
+                                                 history=session["chat_history"]):
+                        if chunk.startswith("[ERROR]"):
+                            yield f"data: {chunk}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+                        
+                        full_reply += chunk
+                        yield f"data: {chunk}\n\n"
+                    
+                    # 記錄對話
+                    session["chat_history"].append({"role": "user", "content": followup})
+                    session["chat_history"].append({"role": "assistant", "content": full_reply})
+                    
+                    if len(session["chat_history"]) > 20:
+                        session["chat_history"] = session["chat_history"][-20:]
+                    
+                    yield "data: [DONE]\n\n"
+                except Exception as e:
+                    print(f"串流錯誤: {e}")
+                    yield f"data: [ERROR]發生錯誤: {str(e)}\n\n"
+                    yield "data: [DONE]\n\n"
+            
+            return Response(stream_with_context(generate()), mimetype='text/event-stream')
+        else:
+            reply = "沒問題，我們可以換一題或再問別的問題喔～"
+            
+            def simple_stream():
+                yield f"data: {reply}\n\n"
+                yield "data: [DONE]\n\n"
+            
+            return Response(stream_with_context(simple_stream()), mimetype='text/event-stream')
+    
+    # 一般問題 → 串流回應
+    def generate():
+        full_reply = ""
+        try:
+            for chunk in ask_anan_stream(message, mode="socratic", 
+                                        profile_type=profile_type, 
+                                        history=session["chat_history"]):
+                if chunk.startswith("[ERROR]"):
+                    yield f"data: {chunk}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                
+                full_reply += chunk
+                yield f"data: {chunk}\n\n"
+            
+            # 記錄對話
+            session["chat_history"].append({"role": "user", "content": message})
+            session["chat_history"].append({"role": "assistant", "content": full_reply})
+            
+            if len(session["chat_history"]) > 20:
+                session["chat_history"] = session["chat_history"][-20:]
+            
+            session["current_problem"] = message
+            session["confusion_count"] = 0
+            
+            # 記錄到資料庫
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
+                (str(uuid.uuid4()), session["user"], message, full_reply, 1, datetime.now().isoformat()),
+            )
+            conn.commit()
+            conn.close()
+            
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            print(f"串流錯誤: {e}")
+            yield f"data: [ERROR]發生錯誤: {str(e)}\n\n"
+            yield "data: [DONE]\n\n"
+    
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+# ===== 傳統路由（保留備援，主要用於圖片）=====
 @app.route("/", methods=["GET", "POST"])
 def home():
     if "user" not in session:
@@ -474,55 +705,69 @@ def home():
         
         return render_template("index.html", username=session.get("user"), role=session.get("role"))
 
-    # ===== POST 請求處理 =====
+    # POST 請求（備援，但前端已改用 /stream）
+    if "chat_history" not in session:
+        session["chat_history"] = []
+    
     msg = (request.form.get("message") or "").strip()
     confusion_count = session.get("confusion_count", 0)
 
-    if "懂了" in msg:
-        reply = random.choice([
-            "太棒了！你真的很努力 👍",
-            "安安老師為你鼓掌 👏",
-            "很好～你已經掌握這個觀念了！",
-            "非常好！我們繼續挑戰下一題吧 💪"
-        ])
-        session["confusion_count"] = 0
-        return jsonify({"reply": reply})
-
-    if "不懂" in msg:
-        if session.get("current_problem"):
-            confusion_count += 1
-            session["confusion_count"] = confusion_count
-            
-            # 讀取學生風格
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            row = c.execute("SELECT profile_type FROM users WHERE username=?", (session["user"],)).fetchone()
-            conn.close()
-            profile_type = row[0] if row else None
-            
-            if confusion_count == 1:
-                followup = f"學生說他不太懂這題「{session['current_problem']}」，請換個角度、舉例或更簡單的方式再教一次。"
-                reply = ask_anan(followup, mode="direct", profile_type=profile_type)
-            elif confusion_count == 2:
-                followup = f"學生第二次說他還是不懂這題「{session['current_problem']}」，請再用不同方式簡短解釋，語氣更鼓勵。"
-                reply = ask_anan(followup, mode="direct", profile_type=profile_type)
-            else:
-                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
-        else:
-            reply = "沒問題，我們可以換一題或再問別的問題喔～"
-        return jsonify({"reply": format_ai_reply(reply)})
-
-    # 讀取學生的學習風格
+    # 讀取學生風格
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     row = c.execute("SELECT profile_type FROM users WHERE username=?", (session["user"],)).fetchone()
     conn.close()
     profile_type = row[0] if row else None
-    
-    print(f"🎯 學生風格：{profile_type}")  # 除錯用
 
-    # 一般題目 → 模型（傳入風格）
-    reply = format_ai_reply(ask_anan(msg, mode="socratic", profile_type=profile_type))
+    # 處理「懂了」
+    if "懂了" in msg or "明白" in msg or "了解" in msg:
+        reply = random.choice([
+            "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
+            "安安老師為你鼓掌 👏 有新的題目要挑戰嗎？",
+            "很好～你已經掌握這個觀念了！繼續加油 💪",
+            "非常好！有其他問題隨時可以問我喔～"
+        ])
+        session["confusion_count"] = 0
+        session["chat_history"] = []
+        session.pop("current_problem", None)
+        return jsonify({"reply": reply})
+
+    # 處理「不懂」
+    if "不懂" in msg:
+        if session.get("current_problem"):
+            confusion_count += 1
+            session["confusion_count"] = confusion_count
+            
+            if confusion_count == 1:
+                followup = "學生說他不太懂，請換個角度、舉例或更簡單的方式再教一次。"
+            elif confusion_count == 2:
+                followup = "學生第二次說他還是不懂，請再用不同方式簡短解釋，語氣更鼓勵。"
+            else:
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
+                return jsonify({"reply": reply})
+            
+            reply = ask_anan(followup, mode="direct", profile_type=profile_type, history=session["chat_history"])
+            
+            session["chat_history"].append({"role": "user", "content": followup})
+            session["chat_history"].append({"role": "assistant", "content": reply})
+            
+            if len(session["chat_history"]) > 20:
+                session["chat_history"] = session["chat_history"][-20:]
+            
+            return jsonify({"reply": format_ai_reply(reply)})
+        else:
+            reply = "沒問題，我們可以換一題或再問別的問題喔～"
+            return jsonify({"reply": reply})
+
+    # 一般問題
+    reply = ask_anan(msg, mode="socratic", profile_type=profile_type, history=session["chat_history"])
+    
+    session["chat_history"].append({"role": "user", "content": msg})
+    session["chat_history"].append({"role": "assistant", "content": reply})
+    
+    if len(session["chat_history"]) > 20:
+        session["chat_history"] = session["chat_history"][-20:]
+    
     session["current_problem"] = msg
     session["confusion_count"] = 0
 
@@ -532,8 +777,10 @@ def home():
         "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
         (str(uuid.uuid4()), session["user"], msg, reply, 1, datetime.now().isoformat()),
     )
-    conn.commit(); conn.close()
-    return jsonify({"reply": reply})
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"reply": format_ai_reply(reply)})
 
 @app.route("/admin")
 def admin_panel():
@@ -551,13 +798,15 @@ def clear():
     if "user" not in session:
         return redirect("/login")
     
-    session.pop("chat_history", None)
+    session["chat_history"] = []
     session.pop("current_problem", None)
-    session.pop("confusion_count", None)
+    session["confusion_count"] = 0
+    
+    print(f"🧹 已清空 {session.get('user')} 的對話記憶")
     
     return redirect("/")
 
-# ===== 圖片題（Vision 識別）=====
+# ===== 圖片題（Vision 識別）- 不使用串流 =====
 @app.route("/analyze_image", methods=["POST"])
 @app.route("/upload", methods=["POST"])
 def analyze_image():
@@ -642,13 +891,24 @@ def analyze_image():
         
         print(f"✅ 圖片題處理完成，最終回覆長度: {len(final_reply)} 字元")
 
+        # 圖片題也記錄到對話歷史
+        if "chat_history" not in session:
+            session["chat_history"] = []
+        
+        session["chat_history"].append({"role": "user", "content": "[學生上傳了一張數學題圖片]"})
+        session["chat_history"].append({"role": "assistant", "content": vision_reply})
+        
+        if len(session["chat_history"]) > 20:
+            session["chat_history"] = session["chat_history"][-20:]
+
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
             "INSERT INTO records (id,user,question,answer,correct,created_at) VALUES (?,?,?,?,?,?)",
             (str(uuid.uuid4()), session["user"], "[圖片題上傳]", final_reply, 1, datetime.now().isoformat()),
         )
-        conn.commit(); conn.close()
+        conn.commit()
+        conn.close()
         return jsonify({"reply": final_reply})
         
     except Exception as e:
@@ -659,7 +919,9 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.9.1 啟動完成（三種風格差異化）")
+    print("🚀 安安 v4.9.3 啟動完成")
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
+    print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
+    print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
     app.run(host="0.0.0.0", port=port)
