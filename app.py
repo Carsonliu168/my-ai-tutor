@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.6 (修復記憶 + 列表符號)
+# v4.9.7 (加入分段格式要求)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.6 - 修復記憶+列表符號）")
+print("✅ [安安] 資料庫就緒（v4.9.7 - 加入分段格式要求）")
 
 # ===== 文字格式化（<br> 正確渲染）=====
 def format_ai_reply(text: str) -> str:
@@ -161,11 +161,35 @@ def build_system_prompt(style: str, profile_type=None) -> str:
   + 分數：用斜線或文字（例如：1/2 或「二分之一」）
   + 圓周率：「π」或「3.14」
 
+⚠️ 重要：回答格式規範
+**必須遵守的分段原則：**
+
+【段落分隔】
+每個重點段落之間必須空一行（使用兩個換行符號）
+不要把所有內容擠在一起，要讓學生容易閱讀
+
+【計算步驟格式】
 計算過程要分行清楚列出：
 第一步：寫出公式
 第二步：代入數字
 第三步：計算結果
 第四步：標註單位
+
+【概念解釋格式】
+解釋概念時也要適當分段：
+先給定義（空一行）
+再舉生活例子（空一行）
+最後總結重點
+
+範例：
+問：log是什麼？
+答：
+log是對數的意思。
+
+我們用生活例子來理解：
+假設你買珍奶，一杯50元，買2杯是100元。
+
+這種格式才容易閱讀！
 """
 
     # ===== 根據學習風格添加專屬指示 =====
@@ -930,10 +954,10 @@ def analyze_image():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    print("🚀 安安 v4.9.6 啟動完成")
+    print("🚀 安安 v4.9.7 啟動完成")
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
-    print("🔧 修復：Session 在 Generator 前設定 + 移除列表符號")
+    print("📝 格式改進：明確要求 AI 分段回答")
     app.run(host="0.0.0.0", port=port)
