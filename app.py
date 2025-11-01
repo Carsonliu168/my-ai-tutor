@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.11 精簡版 - Prompt 大幅簡化）")
+print("✅ [安安] 資料庫就緒（v4.9.12 強制分段版 - 後端自動加換行）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -271,8 +271,17 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                                 full_content += content
                                 # 🔍 Debug：印出每個片段（可以看到 \n）
                                 print(f"📤 Chunk: {repr(content)}")
-                                # 🔧 逐字輸出時先處理數學符號
-                                yield normalize_math_terms(content)
+                                
+                                # 🆕 強制分段：在特定標點符號後加換行
+                                processed_content = normalize_math_terms(content)
+                                
+                                # 如果內容包含這些標點符號，後面加上換行
+                                if any(punct in processed_content for punct in ['：', '！', '？']):
+                                    # 在標點符號後面加 \n\n（但不要重複加）
+                                    if not processed_content.endswith('\n'):
+                                        processed_content += '\n\n'
+                                
+                                yield processed_content
                         except json.JSONDecodeError:
                             continue
             
@@ -328,7 +337,17 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                                     full_content += content
                                     # 🔍 Debug：印出每個片段
                                     print(f"📤 Chunk (OpenAI): {repr(content)}")
-                                    yield normalize_math_terms(content)
+                                    
+                                    # 🆕 強制分段：在特定標點符號後加換行
+                                    processed_content = normalize_math_terms(content)
+                                    
+                                    # 如果內容包含這些標點符號，後面加上換行
+                                    if any(punct in processed_content for punct in ['：', '！', '？']):
+                                        # 在標點符號後面加 \n\n（但不要重複加）
+                                        if not processed_content.endswith('\n'):
+                                            processed_content += '\n\n'
+                                    
+                                    yield processed_content
                             except json.JSONDecodeError:
                                 continue
                 
@@ -934,15 +953,15 @@ def analyze_image():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     print("=" * 60)
-    print("🚀 安安 v4.9.11 精簡版啟動完成")
+    print("🚀 安安 v4.9.12 強制分段版啟動完成")
     print("=" * 60)
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
     print("🔍 Debug 模式：已啟用（可在 log 看到每個 chunk）")
-    print("📝 Prompt 優化：大幅簡化，從 2000 字精簡至 500 字")
+    print("🆕 強制分段：後端在標點符號後自動加換行")
+    print("📝 Prompt 優化：精簡至 500 字")
     print("🔧 數學符號：完全修正（徹底移除所有 LaTeX 語法）")
-    print("✅ 格式優化：強制分段、清晰易讀")
     print("=" * 60)
     app.run(host="0.0.0.0", port=port)

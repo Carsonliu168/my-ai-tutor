@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.2.2：串流回應 + 圖片預覽 + 修復換行 + 移除列表符號
+// v5.3.0：修復換行顯示問題（調整處理順序）
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,13 +46,20 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔧 修復：更新串流訊息內容（加入換行處理）
+  // 🔧 核心修復：更新串流訊息內容
   function updateStreamMessage(messageElement, text) {
-    // 先處理換行符號，轉成 HTML 的 <br>
+    // 🆕 Step 1: 先把 \n 轉成 <br>（這是最重要的！）
     let formattedText = text.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
-    // 再處理數學符號
-    messageElement.innerHTML = autoFormatMath(formattedText);
+    
+    // 🆕 Step 2: 再處理數學符號（但不要破壞 <br>）
+    // 注意：autoFormatMath 不會影響 <br> 標籤
+    formattedText = autoFormatMath(formattedText);
+    
+    // 🆕 Step 3: 直接設定 innerHTML（不要再做任何處理）
+    messageElement.innerHTML = formattedText;
+    
     chatBox.scrollTop = chatBox.scrollHeight;
+    
     if (window.MathJax && window.MathJax.typesetPromise) {
       MathJax.typesetPromise([messageElement]);
     }
