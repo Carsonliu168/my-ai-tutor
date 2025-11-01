@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🧮 數學小老師安安</title>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
   <style>
     body {
       font-family: "Microsoft JhengHei", Arial, sans-serif;
@@ -114,34 +113,27 @@
     }
   </style>
 </head>
-
 <body>
   <header>🧮 數學小老師安安</header>
-
   <div class="container">
     <div id="chat-box"></div>
-
     <form id="chat-form">
       <input id="user-input" type="text" placeholder="請輸入你的問題..." autocomplete="off" />
       <button type="submit">送出</button>
     </form>
-
     <div id="control-buttons">
       <button onclick="sendMessage('我懂了')">我懂了</button>
       <button onclick="sendMessage('我不懂')">我不懂</button>
       <button onclick="document.getElementById('image-upload').click()">上傳圖片題</button>
       <button onclick="fetch('/clear').then(()=>location.reload())">清除紀錄</button>
     </div>
-
     <div id="loading-text">安安正在思考中...</div>
     <input type="file" id="image-upload" accept="image/*" style="display: none;" />
   </div>
-
   <footer>
-    🧮 數學小老師安安 v5.0.22 ｜ © 2025 WeShareAI  
+    🧮 數學小老師安安 v5.3.3 ｜ © 2025 WeShareAI  
     <div>登入狀態：{{ username or '未登入' }} ｜ 角色：{{ role or 'student' }}</div>
   </footer>
-
-  <script src="/static/script.js"></script>
+  <script src="/static/script.js?v=533"></script>
 </body>
 </html>

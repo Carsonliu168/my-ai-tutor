@@ -46,16 +46,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔧 終極修復：處理換行 + 自動加逗號/空格
+  // 🔧 修復：只處理換行
   function updateStreamMessage(messageElement, text) {
-    // 🔥 Step 1: 轉換換行符號
+    // 轉換換行符號為 <br>
     let result = text
       .replace(/\n\n/g, '<br><br>')  // 雙換行
       .replace(/\n/g, '<br>');        // 單換行
-    
-    // 🆕 Step 2: 在數字和文字之間加逗號（讓閱讀更順暢）
-    // 例如：「96答案是」→「96，答案是」
-    result = result.replace(/(\d+)([^\d\s×÷=\+\-<>])/g, '$1，$2');
     
     // 設定內容
     messageElement.innerHTML = result;
