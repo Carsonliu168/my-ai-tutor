@@ -46,17 +46,18 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔧 終極修復：最簡單直接的換行處理
+  // 🔧 終極修復：處理換行 + 自動加逗號/空格
   function updateStreamMessage(messageElement, text) {
-    // 🔥 強制設定樣式，確保換行可以顯示
-    messageElement.style.whiteSpace = "pre-wrap";
-    
-    // 🔥 關鍵：先轉換，再一次性設定
+    // 🔥 Step 1: 轉換換行符號
     let result = text
       .replace(/\n\n/g, '<br><br>')  // 雙換行
       .replace(/\n/g, '<br>');        // 單換行
     
-    // 設定內容（不經過 autoFormatMath，避免被破壞）
+    // 🆕 Step 2: 在數字和文字之間加逗號（讓閱讀更順暢）
+    // 例如：「96答案是」→「96，答案是」
+    result = result.replace(/(\d+)([^\d\s×÷=\+\-<>])/g, '$1，$2');
+    
+    // 設定內容
     messageElement.innerHTML = result;
     chatBox.scrollTop = chatBox.scrollHeight;
   }
