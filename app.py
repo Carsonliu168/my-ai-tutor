@@ -1,6 +1,6 @@
 # ================================
 # 📘 數學小老師安安主程式 app.py
-# v4.9.9 最終版 (完整修正所有格式問題)
+# v4.9.10 Debug 版 (加入串流 debug + 優化 Prompt)
 # ================================
 
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for, Response, stream_with_context
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.9 最終版 - 完整修正所有格式問題）")
+print("✅ [安安] 資料庫就緒（v4.9.10 Debug 版 - 串流 debug + Prompt 優化）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -160,7 +160,33 @@ def format_ai_reply(text: str) -> str:
 
 # ===== System Prompt 建構 =====
 def build_system_prompt(style: str, profile_type=None) -> str:
-    base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
+    # 🆕 超級明確的換行要求（放在最前面）
+    base_prompt = f"""⚠️⚠️⚠️ 超級重要：回答時必須分段！⚠️⚠️⚠️
+
+【強制換行規則 - 必須嚴格遵守】
+每個段落之間必須按兩次 Enter 鍵（空一行）
+不要把所有內容擠在一起！
+
+❌ 錯誤範例（所有文字擠成一團）：
+三角形面積的公式是：底×高÷2我們用一個生活例子來理解：假設你買了一塊三角形的雞排，底邊長10公分，高8公分。計算過程：底×高=10×8=8080÷2=40所以這塊雞排的面積是40平方公分！
+
+✅ 正確範例（有適當分段）：
+三角形面積的公式是：底×高÷2
+
+我們用一個生活例子來理解：
+假設你買了一塊三角形的雞排，底邊長10公分，高8公分。
+
+計算過程：
+底×高=10×8=80
+80÷2=40
+
+所以這塊雞排的面積是40平方公分！
+
+請一定要像「正確範例」那樣，每個段落之間空一行！
+
+---
+
+你是「數學小老師安安」，用繁體中文與學生互動教學。
 禁止開場寒暄或自我介紹，直接開始教學。
 
 教學風格：
@@ -213,10 +239,7 @@ def build_system_prompt(style: str, profile_type=None) -> str:
   + 分數：用斜線或文字（例如：1/2 或「二分之一」）
   + 圓周率：「π」或「3.14」
 
-⚠️ 重要：回答格式規範
-**必須遵守的分段原則：**
-
-【段落分隔】
+【段落分隔 - 再次強調】
 每個重點段落之間必須空一行（使用兩個換行符號）
 不要把所有內容擠在一起，要讓學生容易閱讀
 
@@ -246,6 +269,8 @@ AB 是邊，面 ADEF 是一個面，所以垂直。
 第二步：代入數字
 第三步：計算結果
 第四步：標註單位
+
+每個步驟之間要空一行！
 
 【選擇題分析格式】
 分析選擇題時，每個選項下方的說明文字不要加 - 符號：
@@ -289,10 +314,13 @@ log是對數的意思。
 - 直接給公式和步驟
 - 回答控制在 60 字以內
 - 格式：公式 → 代入 → 答案
+- 每個步驟之間要空一行
 
 範例：
 問：圓面積公式？
-答：A = π × r²
+答：
+A = π × r²
+
 r=5 → A = 3.14 × 25 = 78.5 cm²
 """
     
@@ -333,11 +361,15 @@ r=5 → A = 3.14 × 25 = 78.5 cm²
 - 公式 + 一個簡單應用
 - 回答控制在 100 字左右
 - 清楚但不冗長
+- 每個段落之間要空一行
 
 範例：
 問：圓面積公式？
-答：【公式】A = π × r²
+答：
+【公式】A = π × r²
+
 【應用】半徑 5cm → 面積 = 3.14 × 25 = 78.5 cm²
+
 就像一個小碗的大小！
 """
     
@@ -402,6 +434,8 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                             
                             if content:
                                 full_content += content
+                                # 🔍 Debug：印出每個片段（可以看到 \n）
+                                print(f"📤 Chunk: {repr(content)}")
                                 # 🔧 逐字輸出時先處理數學符號
                                 yield normalize_math_terms(content)
                         except json.JSONDecodeError:
@@ -410,6 +444,7 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
             # 🆕 回傳完整內容（加入自動分段）
             # 注意：這個 return 值在 generator 中不會被直接使用
             # 但我們保留它以便在需要時可以取得完整內容
+            print(f"✅ 串流完成，總長度: {len(full_content)} 字元")
             return auto_add_paragraphs(normalize_math_terms(full_content))
         else:
             raise Exception(f"DeepSeek API 錯誤: {response.status_code}")
@@ -456,10 +491,13 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                                 
                                 if content:
                                     full_content += content
+                                    # 🔍 Debug：印出每個片段
+                                    print(f"📤 Chunk (OpenAI): {repr(content)}")
                                     yield normalize_math_terms(content)
                             except json.JSONDecodeError:
                                 continue
                 
+                print(f"✅ OpenAI 串流完成，總長度: {len(full_content)} 字元")
                 return auto_add_paragraphs(normalize_math_terms(full_content))
             else:
                 raise Exception(f"OpenAI API 錯誤: {response.status_code}")
@@ -1061,14 +1099,16 @@ def analyze_image():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     print("=" * 60)
-    print("🚀 安安 v4.9.9 最終版啟動完成")
+    print("🚀 安安 v4.9.10 Debug 版啟動完成")
     print("=" * 60)
     print("📸 圖片辨識：OpenAI Vision API")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
+    print("🔍 Debug 模式：已啟用（可在 log 看到每個 chunk）")
     print("📝 自動分段：已啟用（emoji、列表、段落智慧換行）")
     print("🔧 數學符號：完全修正（徹底移除所有 LaTeX 語法）")
     print("✅ 格式優化：保留列表符號、正確顯示 emoji")
+    print("⚠️ Prompt 優化：換行規則放在最前面，更明確")
     print("=" * 60)
     app.run(host="0.0.0.0", port=port)
