@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.3.0：修復換行顯示問題（調整處理順序）
+// v5.3.1：終極修復 - 最簡單的換行處理
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,23 +46,19 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔧 核心修復：更新串流訊息內容
+  // 🔧 終極修復：最簡單直接的換行處理
   function updateStreamMessage(messageElement, text) {
-    // 🆕 Step 1: 先把 \n 轉成 <br>（這是最重要的！）
-    let formattedText = text.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+    // 🔥 強制設定樣式，確保換行可以顯示
+    messageElement.style.whiteSpace = "pre-wrap";
     
-    // 🆕 Step 2: 再處理數學符號（但不要破壞 <br>）
-    // 注意：autoFormatMath 不會影響 <br> 標籤
-    formattedText = autoFormatMath(formattedText);
+    // 🔥 關鍵：先轉換，再一次性設定
+    let result = text
+      .replace(/\n\n/g, '<br><br>')  // 雙換行
+      .replace(/\n/g, '<br>');        // 單換行
     
-    // 🆕 Step 3: 直接設定 innerHTML（不要再做任何處理）
-    messageElement.innerHTML = formattedText;
-    
+    // 設定內容（不經過 autoFormatMath，避免被破壞）
+    messageElement.innerHTML = result;
     chatBox.scrollTop = chatBox.scrollHeight;
-    
-    if (window.MathJax && window.MathJax.typesetPromise) {
-      MathJax.typesetPromise([messageElement]);
-    }
   }
 
   // 🆕 圖片燈箱（點擊放大）
@@ -142,6 +138,9 @@ document.addEventListener("DOMContentLoaded", () => {
         
         // 累積內容
         fullReply += data;
+        
+        // 🔥 直接顯示，不要任何額外處理
+        console.log("收到:", data, "累積:", fullReply.length, "字");
         updateStreamMessage(thinkingMsg, fullReply);
       };
       
