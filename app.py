@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.12 強制分段版 - 後端自動加換行）")
+print("✅ [安安] 資料庫就緒（v4.9.13 修復亂碼版 - 優化數學符號處理）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -115,30 +115,24 @@ def auto_add_paragraphs(text: str) -> str:
 # ===== 🔧 優化版數學符號處理 =====
 def normalize_math_terms(text: str) -> str:
     """
-    智慧處理數學符號，移除所有 LaTeX 語法
+    智慧處理數學符號，移除 LaTeX 語法但保留內容
     """
     if not text: return text
     
-    # 🔧 第一步：移除 LaTeX 數學模式 $$...$$ 和 $...$
-    text = re.sub(r'\$\$(.+?)\$\$', r'\1', text)  # 移除 $$...$$
-    text = re.sub(r'\$([^\$]+)\$', r'\1', text)  # 移除 $...$（任何內容）
+    # 🔧 移除 LaTeX 數學模式的 $ 符號，但保留內容
+    # 先處理 $$...$$ （顯示模式）
+    text = re.sub(r'\$\$([^\$]+?)\$\$', r'\1', text)
+    # 再處理 $...$ （行內模式）
+    text = re.sub(r'\$([^\$]+?)\$', r'\1', text)
+    # 最後移除所有剩餘的單獨 $ 符號
+    text = re.sub(r'\$', '', text)
     
-    # 🔧 第二步：移除所有剩餘的單獨 $ 符號（包括 $2$ 這種）
-    text = re.sub(r'\$+', '', text)  # 移除所有剩餘的 $
-    
-    # 移除其他 LaTeX 語法
-    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # 移除 \command{...}
-    text = re.sub(r'\\[a-zA-Z]+', '', text)  # 移除 \command
+    # 移除 LaTeX 命令但保留內容
+    text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # \command{content} → content
+    text = re.sub(r'\\[a-zA-Z]+\s*', '', text)  # \command → 移除
     
     # 移除 Markdown 標題符號
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    
-    # 數學符號標準化（保持不變）
-    text = text.replace("π", "3.1416")
-    text = re.sub(r"(\d+)\s*cm²", r"\1 平方公分", text)
-    
-    # 移除多餘空格
-    text = re.sub(r'[ \t]+', ' ', text)
     
     return text.strip()
 
