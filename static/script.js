@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.4.0：完整修復 - 串流列表符號 + 數學公式 + 換行
+// v5.4.1：智能斷行 - 自動處理計算步驟
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,20 +46,30 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔥 v5.4.0 完整修復：串流訊息更新函數
+  // 🔥 v5.4.1 智能斷行：串流訊息更新函數
   function updateStreamMessage(messageElement, text) {
     // 📝 步驟 1：處理換行符號
     let result = text
       .replace(/\n\n/g, '<br><br>')  // 雙換行
       .replace(/\n/g, '<br>');        // 單換行
     
+    // 🆕 步驟 1.5：智能斷行 - 處理計算步驟黏在一起的情況
+    // 偵測模式：數字(運算符號)數字 後面直接接數字，應該要換行
+    // 例如：80 後面接 80÷2，應該變成 80<br>80÷2
+    result = result.replace(/(\d+)(<br>)?(\d+[+\-×÷])/g, function(match, num1, br, num2) {
+      // 如果已經有 <br> 就保留，沒有就加上
+      return br ? match : num1 + '<br>' + num2;
+    });
+    
+    // 🆕 額外處理：數字=數字 後面直接接數字，也要換行
+    // 例如：10×8=80 後面接 80÷2，中間要加換行
+    result = result.replace(/=(\d+)(\d+)/g, '=$1<br>$2');
+    
     // 📝 步驟 2：處理列表符號 (- 開頭的行)
-    // 使用正則表達式匹配 "- " 或 "<br>- " 開頭的內容
     result = result.replace(/(^|\<br\>)-\s+(.+?)(?=\<br\>|$)/g, '$1<li>$2</li>');
     
     // 📝 步驟 3：如果有 <li>，包在 <ul> 裡
     if (result.includes('<li>')) {
-      // 將連續的 <li> 包在同一個 <ul> 中
       result = result.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
     }
     
@@ -156,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 累積內容
         fullReply += data;
         
-        // 🔥 v5.4.0：使用完整處理函數
+        // 🔥 v5.4.1：使用智能斷行處理函數
         updateStreamMessage(thinkingMsg, fullReply);
       };
       
