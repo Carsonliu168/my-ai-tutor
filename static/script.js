@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.4.2：修正數學公式處理 bug
+// v5.4.3：移除智能斷行，保留核心功能
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadingText = document.getElementById("loading-text");
   const uploadInput = document.getElementById("image-upload");
 
-  // ===== 數學公式自動格式化（修正版）=====
+  // ===== 數學公式自動格式化（v5.4.2 修正版）=====
   function autoFormatMath(text) {
     if (!text) return text;
     
@@ -23,14 +23,13 @@ document.addEventListener("DOMContentLoaded", () => {
     text = text.replace(/\\left(?![({[])/g, "(");
     text = text.replace(/\\right(?![)}\]])/g, ")");
     
-    // 方括號轉數學模式（保留）
+    // 方括號轉數學模式
     text = text.replace(/\[([^\[\]]+)\]/g, "\$$1\$");
     
-    // 常見數學函數自動包 $（保留）
+    // 常見數學函數自動包 $
     text = text.replace(/([^$])((?:\\frac|\\sqrt|\\sin|\\cos|\\tan|\\log|\\ln|\\arcsin|\\arccos|\\arctan)[^$ ]+)/g, "$1\$$2\$");
     
-    // ❌ 移除有問題的規則：這行經常造成 $2$3 之類的錯誤
-    // text = text.replace(/([=：])([\d\w\s\\\+\-\*\/\(\)\.]+)([。；\)])/g, "$1\$$2\$$3");
+    // ✅ 已移除有問題的規則
     
     return text;
   }
@@ -57,22 +56,14 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔥 v5.4.2 修正版：串流訊息更新函數
+  // 🔥 v5.4.3 簡化版：只處理基本換行和列表
   function updateStreamMessage(messageElement, text) {
     // 📝 步驟 1：處理換行符號
     let result = text
       .replace(/\n\n/g, '<br><br>')  // 雙換行
       .replace(/\n/g, '<br>');        // 單換行
     
-    // 🆕 步驟 1.5：智能斷行 - 處理計算步驟黏在一起的情況
-    // 偵測模式：數字(運算符號)數字 後面直接接數字，應該要換行
-    result = result.replace(/(\d+)(<br>)?(\d+[+\-×÷])/g, function(match, num1, br, num2) {
-      // 如果已經有 <br> 就保留，沒有就加上
-      return br ? match : num1 + '<br>' + num2;
-    });
-    
-    // 🆕 額外處理：數字=數字 後面直接接數字，也要換行
-    result = result.replace(/=(\d+)(\d+)/g, '=$1<br>$2');
+    // ❌ 移除智能斷行（造成災難）
     
     // 📝 步驟 2：處理列表符號 (- 開頭的行)
     result = result.replace(/(^|\<br\>)-\s+(.+?)(?=\<br\>|$)/g, '$1<li>$2</li>');
@@ -82,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
       result = result.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
     }
     
-    // 📝 步驟 4：套用數學公式格式化（已修正 bug）
+    // 📝 步驟 4：套用數學公式格式化
     result = autoFormatMath(result);
     
     // 📝 步驟 5：設定內容
@@ -175,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 累積內容
         fullReply += data;
         
-        // 🔥 v5.4.2：使用修正後的處理函數
+        // 🔥 v5.4.3：使用簡化版處理函數
         updateStreamMessage(thinkingMsg, fullReply);
       };
       
