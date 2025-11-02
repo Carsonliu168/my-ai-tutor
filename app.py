@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.14 終極修復版 - 超強符號禁令）")
+print("✅ [安安] 資料庫就緒（v4.9.15 DeepSeek Vision 版 - 圖片辨識改用 DeepSeek）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -886,9 +886,49 @@ def analyze_image():
         conn.close()
         profile_type = row[0] if row else None
         
-        if openai_api_key:
+        # 🆕 優先使用 DeepSeek Vision API
+        if deepseek_api_key:
             try:
-                print("📸 使用 OpenAI Vision 辨識並解題...")
+                print("📸 使用 DeepSeek Vision 辨識並解題...")
+                headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。", profile_type)},
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "這是一張數學題的照片，請先將題目完整轉成文字，然後用繁體中文詳細解題。\n\n**特別注意**：\n1. 如果是圖形規律題，請仔細觀察每個圖形，數清楚元素數量\n2. 列出前3-4項的具體數值\n3. 找出規律並建立通項公式\n4. 驗證公式的正確性\n\n解題步驟要包含：題目內容、公式、代入、計算、最終答案"
+                                },
+                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{img_b64}"}}
+                            ]
+                        }
+                    ],
+                    "max_tokens": 2000,
+                    "temperature": 0.2
+                }
+                
+                r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=90)
+                
+                if r.status_code == 200:
+                    data = r.json()
+                    vision_reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if vision_reply and len(vision_reply.strip()) > 20:
+                        print("✅ DeepSeek Vision 辨識成功！")
+                        # 加入自動分段處理
+                        vision_reply = auto_add_paragraphs(normalize_math_terms(vision_reply))
+                    else:
+                        vision_reply = ""
+                        
+            except Exception as e:
+                print(f"⚠️ DeepSeek Vision 發生錯誤: {e}")
+        
+        # 🔄 OpenAI Vision 備援
+        if not vision_reply and openai_api_key:
+            try:
+                print("📸 使用 OpenAI Vision 備援辨識...")
                 headers = {"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": "gpt-4o-mini",
@@ -915,14 +955,14 @@ def analyze_image():
                     data = r.json()
                     vision_reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     if vision_reply and len(vision_reply.strip()) > 20:
-                        print("✅ OpenAI Vision 辨識成功！")
-                        # 🆕 加入自動分段處理
+                        print("✅ OpenAI Vision 備援成功！")
+                        # 加入自動分段處理
                         vision_reply = auto_add_paragraphs(normalize_math_terms(vision_reply))
                     else:
                         vision_reply = ""
                         
             except Exception as e:
-                print(f"⚠️ OpenAI Vision 發生錯誤: {e}")
+                print(f"⚠️ OpenAI Vision 備援失敗: {e}")
         
         if not vision_reply:
             return jsonify({"reply": "⚠️ 無法辨識這張圖片的內容。請確認圖片清晰度足夠，然後重新上傳。"})
@@ -967,15 +1007,15 @@ def analyze_image():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     print("=" * 60)
-    print("🚀 安安 v4.9.12 強制分段版啟動完成")
+    print("🚀 安安 v4.9.15 DeepSeek Vision 版啟動完成")
     print("=" * 60)
-    print("📸 圖片辨識：OpenAI Vision API")
+    print("📸 圖片辨識：DeepSeek Vision API (OpenAI Vision 備援)")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
     print("🧠 對話記憶：已啟用（最多保留 10 輪對話）")
     print("⚡ 串流回應：已啟用（SSE + DeepSeek Stream API）")
     print("🔍 Debug 模式：已啟用（可在 log 看到每個 chunk）")
-    print("🆕 強制分段：後端在標點符號後自動加換行")
-    print("📝 Prompt 優化：精簡至 500 字")
+    print("📝 System Prompt：超強符號禁令（禁止 $ 和 arcsin）")
     print("🔧 數學符號：完全修正（徹底移除所有 LaTeX 語法）")
+    print("💰 成本優化：全面使用 DeepSeek（更便宜更準確）")
     print("=" * 60)
     app.run(host="0.0.0.0", port=port)
