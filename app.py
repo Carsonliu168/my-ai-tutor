@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.13 修復亂碼版 - 優化數學符號處理）")
+print("✅ [安安] 資料庫就緒（v4.9.14 終極修復版 - 超強符號禁令）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -156,6 +156,24 @@ def format_ai_reply(text: str) -> str:
 def build_system_prompt(style: str, profile_type=None) -> str:
     base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
 
+⚠️⚠️⚠️ 超級重要：絕對禁止使用的符號 ⚠️⚠️⚠️
+
+【嚴格禁令 - 違反這些規則會讓學生看到亂碼】
+1. 絕對不可使用 $ 符號（任何情況下都不行）
+2. 絕對不可使用 LaTeX 語法（\\frac、\\sqrt 等）
+3. 絕對不可使用反三角函數符號（arcsin、arccos、arctan）
+4. 絕對不可使用 ^ 符號（次方用 ² ³ ⁴ 或文字表達）
+
+【正確的數學表達方式】
+✅ 正確：sin A = 13/14，所以 A 約等於 68°
+❌ 錯誤：A = arcsin(13/14) 或 A = $arcsin(13/14)$
+
+✅ 正確：2 的 3 次方 = 8 或 2³ = 8
+❌ 錯誤：2^3 = 8
+
+✅ 正確：根號 16 = 4 或 √16 = 4
+❌ 錯誤：\\sqrt{{16}} = 4
+
 ⚠️ 超級重要：回答時每個段落之間必須空一行！
 請按照這個格式回答：
 
@@ -177,7 +195,9 @@ def build_system_prompt(style: str, profile_type=None) -> str:
 
 數學符號規範：
 - 使用 ×（乘）、÷（除）、=（等於）
-- 禁止使用 $、LaTeX 語法
+- 使用 √（根號）、²（平方）、³（立方）
+- 分數用斜線：1/2、3/4
+- 角度直接寫：30°、45°、90°
 - 每個計算步驟要換行
 
 範例格式：
