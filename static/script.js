@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.3.1：終極修復 - 最簡單的換行處理
+// v5.4.0：完整修復 - 串流列表符號 + 數學公式 + 換行
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,16 +46,36 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔧 修復：只處理換行
+  // 🔥 v5.4.0 完整修復：串流訊息更新函數
   function updateStreamMessage(messageElement, text) {
-    // 轉換換行符號為 <br>
+    // 📝 步驟 1：處理換行符號
     let result = text
       .replace(/\n\n/g, '<br><br>')  // 雙換行
       .replace(/\n/g, '<br>');        // 單換行
     
-    // 設定內容
+    // 📝 步驟 2：處理列表符號 (- 開頭的行)
+    // 使用正則表達式匹配 "- " 或 "<br>- " 開頭的內容
+    result = result.replace(/(^|\<br\>)-\s+(.+?)(?=\<br\>|$)/g, '$1<li>$2</li>');
+    
+    // 📝 步驟 3：如果有 <li>，包在 <ul> 裡
+    if (result.includes('<li>')) {
+      // 將連續的 <li> 包在同一個 <ul> 中
+      result = result.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+    }
+    
+    // 📝 步驟 4：套用數學公式格式化
+    result = autoFormatMath(result);
+    
+    // 📝 步驟 5：設定內容
     messageElement.innerHTML = result;
     chatBox.scrollTop = chatBox.scrollHeight;
+    
+    // 📝 步驟 6：觸發 MathJax 渲染數學符號
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      MathJax.typesetPromise([messageElement]).catch(err => {
+        console.warn("MathJax 渲染警告:", err);
+      });
+    }
   }
 
   // 🆕 圖片燈箱（點擊放大）
@@ -136,8 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 累積內容
         fullReply += data;
         
-        // 🔥 直接顯示，不要任何額外處理
-        console.log("收到:", data, "累積:", fullReply.length, "字");
+        // 🔥 v5.4.0：使用完整處理函數
         updateStreamMessage(thinkingMsg, fullReply);
       };
       
