@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.4.1：智能斷行 - 自動處理計算步驟
+// v5.4.2：修正數學公式處理 bug
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -10,17 +10,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadingText = document.getElementById("loading-text");
   const uploadInput = document.getElementById("image-upload");
 
-  // ===== 數學公式自動格式化 =====
+  // ===== 數學公式自動格式化（修正版）=====
   function autoFormatMath(text) {
     if (!text) return text;
+    
+    // 清理多餘的 $ 符號
     text = text.replace(/\$\$\$/g, "$$");
     text = text.replace(/\$\s*\$/g, "$");
     text = text.replace(/\$\$([^\$]+)\$\$\$/g, "$$$1$$");
+    
+    // 處理 LaTeX 括號
     text = text.replace(/\\left(?![({[])/g, "(");
     text = text.replace(/\\right(?![)}\]])/g, ")");
+    
+    // 方括號轉數學模式（保留）
     text = text.replace(/\[([^\[\]]+)\]/g, "\$$1\$");
-    text = text.replace(/([^$])((?:\\frac|\\sqrt|\\sin|\\cos|\\tan)[^$ ]+)/g, "$1\$$2\$");
-    text = text.replace(/([=：])([\d\w\s\\\+\-\*\/\(\)\.]+)([。；\)])/g, "$1\$$2\$$3");
+    
+    // 常見數學函數自動包 $（保留）
+    text = text.replace(/([^$])((?:\\frac|\\sqrt|\\sin|\\cos|\\tan|\\log|\\ln|\\arcsin|\\arccos|\\arctan)[^$ ]+)/g, "$1\$$2\$");
+    
+    // ❌ 移除有問題的規則：這行經常造成 $2$3 之類的錯誤
+    // text = text.replace(/([=：])([\d\w\s\\\+\-\*\/\(\)\.]+)([。；\)])/g, "$1\$$2\$$3");
+    
     return text;
   }
 
@@ -46,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔥 v5.4.1 智能斷行：串流訊息更新函數
+  // 🔥 v5.4.2 修正版：串流訊息更新函數
   function updateStreamMessage(messageElement, text) {
     // 📝 步驟 1：處理換行符號
     let result = text
@@ -55,14 +66,12 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // 🆕 步驟 1.5：智能斷行 - 處理計算步驟黏在一起的情況
     // 偵測模式：數字(運算符號)數字 後面直接接數字，應該要換行
-    // 例如：80 後面接 80÷2，應該變成 80<br>80÷2
     result = result.replace(/(\d+)(<br>)?(\d+[+\-×÷])/g, function(match, num1, br, num2) {
       // 如果已經有 <br> 就保留，沒有就加上
       return br ? match : num1 + '<br>' + num2;
     });
     
     // 🆕 額外處理：數字=數字 後面直接接數字，也要換行
-    // 例如：10×8=80 後面接 80÷2，中間要加換行
     result = result.replace(/=(\d+)(\d+)/g, '=$1<br>$2');
     
     // 📝 步驟 2：處理列表符號 (- 開頭的行)
@@ -73,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
       result = result.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
     }
     
-    // 📝 步驟 4：套用數學公式格式化
+    // 📝 步驟 4：套用數學公式格式化（已修正 bug）
     result = autoFormatMath(result);
     
     // 📝 步驟 5：設定內容
@@ -166,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 累積內容
         fullReply += data;
         
-        // 🔥 v5.4.1：使用智能斷行處理函數
+        // 🔥 v5.4.2：使用修正後的處理函數
         updateStreamMessage(thinkingMsg, fullReply);
       };
       
