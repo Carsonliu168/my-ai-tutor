@@ -1,6 +1,6 @@
 // ================================================
 // 📘 安安專案前端控制腳本
-// v5.4.3：移除智能斷行，保留核心功能
+// v5.4.4：修復步驟編號格式問題
 // ================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -56,14 +56,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return message;
   }
 
-  // 🔥 v5.4.3 簡化版：只處理基本換行和列表
+  // 🔥 v5.4.4 修復版：加強步驟編號格式處理
   function updateStreamMessage(messageElement, text) {
     // 📝 步驟 1：處理換行符號
     let result = text
       .replace(/\n\n/g, '<br><br>')  // 雙換行
       .replace(/\n/g, '<br>');        // 單換行
     
-    // ❌ 移除智能斷行（造成災難）
+    // 🆕 步驟 1.5：強制處理步驟編號格式
+    // 確保每個【步驟X】都有足夠的換行
+    result = result.replace(/(【步驟\d+】)/g, '<br><br>$1<br>');
     
     // 📝 步驟 2：處理列表符號 (- 開頭的行)
     result = result.replace(/(^|\<br\>)-\s+(.+?)(?=\<br\>|$)/g, '$1<li>$2</li>');
@@ -166,7 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 累積內容
         fullReply += data;
         
-        // 🔥 v5.4.3：使用簡化版處理函數
+        // 🔥 v5.4.4：使用修復版處理函數
         updateStreamMessage(thinkingMsg, fullReply);
       };
       
