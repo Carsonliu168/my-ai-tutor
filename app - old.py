@@ -1,5 +1,5 @@
-# ================================
-# 📘 安安專案主程式 app.py
+﻿# ================================
+# 📘 翔宇專案主程式 app.py
 # v5.0.0：新增會員系統與認知問卷
 # ================================
 
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "xiangyu-secret-key")
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 # Session 設定（實際由 ensure_user 控制是否持久化）
@@ -51,7 +51,7 @@ except Exception as e:
 # 🗄️ 資料庫初始化
 # ================================
 
-DB_PATH = "data/anan.db"
+DB_PATH = "data/xiangyu.db"
 os.makedirs("data", exist_ok=True)
 
 def get_conn(): 
@@ -92,7 +92,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print(f"✅ [安安] 資料庫就緒 ({APP_VERSION})")
+    print(f"✅ [翔宇] 資料庫就緒 ({APP_VERSION})")
 
 init_db()
 
@@ -418,7 +418,7 @@ def brief_history(max_items=4):
     tail = convo[-max_items:]
     lines = []
     for m in tail:
-        role = "學生" if m.get("role") == "user" else "安安"
+        role = "學生" if m.get("role") == "user" else "翔宇"
         content = (m.get("content") or "").strip()
         content = re.sub(r'\s+', ' ', content)
         lines.append(f"{role}：{content}")
@@ -471,14 +471,14 @@ def trim_conversation_history():
         session["conversation"] = convo[-MAX_HISTORY:]
         session.modified = True
 
-def ask_anan(question, mode="socratic", history_text=""):
+def ask_xiangyu(question, mode="socratic", history_text=""):
     if not deepseek_api_key and not openai_api_key:
         return fallback_generate_reply(question)
     
     # ========== 台灣化教學風格設定 ==========
     taiwan_style = """
-## 安安的角色設定
-你是「安安」，一位親切、幽默又超有耐心的台灣數學小老師。你像學生的貼身家教，隨時陪伴解決數學問題。
+## 翔宇的角色設定
+你是「翔宇」，一位親切、幽默又超有耐心的台灣數學小老師。你像學生的貼身家教，隨時陪伴解決數學問題。
 
 ⚠️ **嚴格規範：你必須100%使用台灣繁體中文回答，絕對禁止出現任何簡體字！**
 
@@ -688,7 +688,7 @@ def remove_internal_checklist(text):
     
     return text.strip()
 
-TEACHER_HINT = "安安知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
+TEACHER_HINT = "翔宇知道你還是有些困惑呢 😅 這題確實有點難度！建議你把題目記下來，明天問老師會講得更清楚喔～老師一定很樂意幫你的！💪"
 
 def next_help_response(counter_name):
     c = session.get(counter_name, 0) + 1
@@ -701,7 +701,7 @@ def next_help_response(counter_name):
         return "換個方式說～你記得剛剛的公式是什麼嗎？我們一步一步來！"
     elif c == 3:
         hist = brief_history(4)
-        return ask_anan(
+        return ask_xiangyu(
             "學生還是不懂，請直接給出完整解答：明確寫出公式、代入數字、計算過程、最終答案（含單位）。記得用台灣生活化例子說明。", 
             mode="normal", 
             history_text=hist
@@ -772,7 +772,7 @@ def analyze_image():
     mime = detect_mime_by_bytes(data)
     
     # 強化版指令
-    instruction = """你是台灣數學老師安安，用繁體中文逐步講解這張圖片題。
+    instruction = """你是台灣數學老師翔宇，用繁體中文逐步講解這張圖片題。
 
 解題要求：
 1. 立體幾何題、三角函數題必須非常仔細，每一步都要驗證
@@ -874,7 +874,7 @@ def analyze_image():
 
 ---
 
-💡 **安安小提醒**：我用了兩種方法幫你算，如果兩個答案不一樣，建議你自己再驗算一次，或明天問老師確認喔！"""
+💡 **翔宇小提醒**：我用了兩種方法幫你算，如果兩個答案不一樣，建議你自己再驗算一次，或明天問老師確認喔！"""
             
             res = final_result
 
@@ -922,7 +922,7 @@ def home():
         session["image_confused_count"] = 0
         hist = brief_history(6)
         
-        reply = ask_anan(msg, "socratic", hist)
+        reply = ask_xiangyu(msg, "socratic", hist)
 
         convo.append({"role":"user","content":msg})
         convo.append({"role":"assistant","content":reply})

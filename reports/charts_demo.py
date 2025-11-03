@@ -1,6 +1,6 @@
-# reports/charts_demo.py
+﻿# reports/charts_demo.py
 # ------------------------------------------
-# 安安專案用：生成個人學習分析圖表（繁體中文正常顯示）
+# 翔宇專案用：生成個人學習分析圖表（繁體中文正常顯示）
 # 不會影響 app.py，也不會啟動 Flask，只會輸出圖片到 reports/images/
 # ------------------------------------------
 
@@ -35,7 +35,7 @@ radar_scores = np.array([80, 70, 55, 65, 75])     # 0~100
 # ---------- D. 各章節正確率（長條圖） ----------
 plt.figure(figsize=(8,5))
 bars = plt.bar(topics, [r*100 for r in correct_rates], color='#4E79A7')
-plt.title(f'安安小老師學習報告 - {student_name}\n各章節正確率', fontsize=16)
+plt.title(f'翔宇小老師學習報告 - {student_name}\n各章節正確率', fontsize=16)
 plt.xlabel('數學主題'); plt.ylabel('正確率 (%)'); plt.ylim(0, 100)
 for bar, rate in zip(bars, correct_rates):
     plt.text(bar.get_x()+bar.get_width()/2, rate*100-3, f"{rate*100:.0f}%", ha='center', va='top', color='white', fontsize=12)
@@ -46,7 +46,7 @@ plt.close()
 # ---------- E. 學習成長曲線（折線圖） ----------
 plt.figure(figsize=(8,5))
 plt.plot(weeks, weekly_scores, marker='o', color='#F28E2B', linewidth=3)
-plt.title(f'安安小老師學習報告 - {student_name}\n學習成長曲線', fontsize=16)
+plt.title(f'翔宇小老師學習報告 - {student_name}\n學習成長曲線', fontsize=16)
 plt.xlabel('週次'); plt.ylabel('平均正確率 (%)')
 plt.grid(True, linestyle='--', alpha=0.6)
 for x, y in zip(weeks, weekly_scores):
@@ -68,7 +68,7 @@ ax.plot(angles, scores, 'o-', linewidth=2, color='#59A14F')
 ax.fill(angles, scores, alpha=0.25, color='#59A14F')
 ax.set_thetagrids(np.degrees(angles[:-1]), labels)
 ax.set_ylim(0, 100)
-plt.title(f'安安小老師學習報告 - {student_name}\n學習能力雷達圖', fontsize=15, pad=20)
+plt.title(f'翔宇小老師學習報告 - {student_name}\n學習能力雷達圖', fontsize=15, pad=20)
 plt.tight_layout()
 plt.savefig(OUT / "學習能力雷達圖.png", dpi=180)
 plt.close()

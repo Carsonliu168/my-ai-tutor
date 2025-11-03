@@ -1,5 +1,5 @@
-# ================================
-# 📘 數學小老師安安主程式 app.py
+﻿# ================================
+# 📘 數學小老師翔宇主程式 app.py
 # v4.9.10 Debug 版 (加入串流 debug + 優化 Prompt)
 # ================================
 
@@ -8,7 +8,7 @@ import os, json, base64, requests, sqlite3, uuid, re, random, bcrypt
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "anan-secret-key")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "xiangyu-secret-key")
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 # ===== API Keys =====
@@ -17,7 +17,7 @@ openai_api_key   = os.getenv("OPENAI_API_KEY", "")
 gemini_api_key   = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
 
 # ===== DB =====
-DB_PATH = "data/anan.db"
+DB_PATH = "data/xiangyu.db"
 os.makedirs("data", exist_ok=True)
 
 def init_db():
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [安安] 資料庫就緒（v4.9.15 DeepSeek Vision 版 - 圖片辨識改用 DeepSeek）")
+print("✅ [翔宇] 資料庫就緒（v4.9.15 DeepSeek Vision 版 - 圖片辨識改用 DeepSeek）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -150,7 +150,7 @@ def format_ai_reply(text: str) -> str:
 
 # ===== System Prompt 建構 =====
 def build_system_prompt(style: str, profile_type=None) -> str:
-    base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
+    base_prompt = f"""你是「數學小老師翔宇」，用繁體中文與學生互動教學。
 
 ⚠️⚠️⚠️ 超級重要：絕對禁止使用的符號 ⚠️⚠️⚠️
 
@@ -245,8 +245,8 @@ def build_system_prompt(style: str, profile_type=None) -> str:
     
     return base_prompt
 
-# ===== 🆕 串流版本：ask_anan_stream =====
-def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=None):
+# ===== 🆕 串流版本：ask_xiangyu_stream =====
+def ask_xiangyu_stream(question: str, mode="socratic", profile_type=None, history=None):
     """
     Generator 函數，逐字 yield AI 回應
     """
@@ -393,11 +393,11 @@ def ask_anan_stream(question: str, mode="socratic", profile_type=None, history=N
                 
         except Exception as e2:
             print(f"OpenAI 備援失敗: {e2}")
-            yield "[ERROR]安安暫時無法回應，請稍後再試。"
+            yield "[ERROR]翔宇暫時無法回應，請稍後再試。"
             return ""
 
-# ===== 非串流版本：ask_anan (保留作為備援) =====
-def ask_anan(question: str, mode="socratic", profile_type=None, history=None) -> str:
+# ===== 非串流版本：ask_xiangyu (保留作為備援) =====
+def ask_xiangyu(question: str, mode="socratic", profile_type=None, history=None) -> str:
     """
     傳統版本，用於圖片辨識等不需串流的場景
     """
@@ -454,7 +454,7 @@ def ask_anan(question: str, mode="socratic", profile_type=None, history=None) ->
     except Exception as e:
         print("OpenAI 備援失敗:", e)
 
-    return "（安安暫時沒回應，請稍後再試一次）"
+    return "（翔宇暫時沒回應，請稍後再試一次）"
 
 # ===== 登入 / 登出 =====
 @app.route("/login", methods=["GET", "POST"])
@@ -629,7 +629,7 @@ def stream_chat():
         
         reply = random.choice([
             "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
-            "安安老師為你鼓掌 👏 有新的題目要挑戰嗎？",
+            "翔宇老師為你鼓掌 👏 有新的題目要挑戰嗎？",
             "很好～你已經掌握這個觀念了！繼續加油 💪",
             "非常好！有其他問題隨時可以問我喔～"
         ])
@@ -657,7 +657,7 @@ def stream_chat():
             elif confusion_count == 2:
                 followup = f"學生第二次說他還是不懂這個問題：「{current_problem}」，請再用不同方式簡短解釋，語氣更鼓勵。"
             else:
-                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，翔宇為你加油 💪"
                 
                 def simple_stream():
                     yield f"data: {reply}\n\n"
@@ -669,7 +669,7 @@ def stream_chat():
             def generate():
                 full_reply = ""
                 try:
-                    for chunk in ask_anan_stream(followup, mode="direct", 
+                    for chunk in ask_xiangyu_stream(followup, mode="direct", 
                                                  profile_type=profile_type, 
                                                  history=session["chat_history"]):
                         if chunk.startswith("[ERROR]"):
@@ -712,7 +712,7 @@ def stream_chat():
     def generate():
         full_reply = ""
         try:
-            for chunk in ask_anan_stream(message, mode="socratic", 
+            for chunk in ask_xiangyu_stream(message, mode="socratic", 
                                         profile_type=profile_type, 
                                         history=session["chat_history"]):
                 if chunk.startswith("[ERROR]"):
@@ -785,7 +785,7 @@ def home():
     if "懂了" in msg or "明白" in msg or "了解" in msg:
         reply = random.choice([
             "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
-            "安安老師為你鼓掌 👏 有新的題目要挑戰嗎？",
+            "翔宇老師為你鼓掌 👏 有新的題目要挑戰嗎？",
             "很好～你已經掌握這個觀念了！繼續加油 💪",
             "非常好！有其他問題隨時可以問我喔～"
         ])
@@ -805,10 +805,10 @@ def home():
             elif confusion_count == 2:
                 followup = "學生第二次說他還是不懂，請再用不同方式簡短解釋，語氣更鼓勵。"
             else:
-                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，安安為你加油 💪"
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，翔宇為你加油 💪"
                 return jsonify({"reply": reply})
             
-            reply = ask_anan(followup, mode="direct", profile_type=profile_type, history=session["chat_history"])
+            reply = ask_xiangyu(followup, mode="direct", profile_type=profile_type, history=session["chat_history"])
             
             session["chat_history"].append({"role": "user", "content": followup})
             session["chat_history"].append({"role": "assistant", "content": reply})
@@ -822,7 +822,7 @@ def home():
             return jsonify({"reply": reply})
 
     # 一般問題
-    reply = ask_anan(msg, mode="socratic", profile_type=profile_type, history=session["chat_history"])
+    reply = ask_xiangyu(msg, mode="socratic", profile_type=profile_type, history=session["chat_history"])
     
     session["chat_history"].append({"role": "user", "content": msg})
     session["chat_history"].append({"role": "assistant", "content": reply})
@@ -1028,7 +1028,7 @@ def analyze_image():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     print("=" * 60)
-    print("🚀 安安 v4.9.15 DeepSeek Vision 版啟動完成")
+    print("🚀 翔宇 v4.9.15 DeepSeek Vision 版啟動完成")
     print("=" * 60)
     print("📸 圖片辨識：DeepSeek Vision API (OpenAI Vision 備援)")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")

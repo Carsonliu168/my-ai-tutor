@@ -1,4 +1,4 @@
-# fix_prompt_v2.py - 更強制的步驟編號
+﻿# fix_prompt_v2.py - 更強制的步驟編號
 import re
 
 # 讀取原檔案
@@ -8,7 +8,7 @@ with open('app.py', 'r', encoding='utf-8') as f:
 # 更強制的新版本
 new_prompt_function = '''# ===== System Prompt 建構 =====
 def build_system_prompt(style: str, profile_type=None) -> str:
-    base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
+    base_prompt = f"""你是「數學小老師翔宇」，用繁體中文與學生互動教學。
 
 🔴🔴🔴 絕對禁止事項 🔴🔴🔴
 1. 禁止使用 $、LaTeX、^、arcsin 等符號

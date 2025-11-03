@@ -1,4 +1,4 @@
-# fix_syntax.py - 修復語法錯誤
+﻿# fix_syntax.py - 修復語法錯誤
 import re
 
 # 還原到備份
@@ -8,7 +8,7 @@ with open('app.py.backup', 'r', encoding='utf-8') as f:
 # 修正後的新版本（處理好換行符號）
 new_prompt_function = '''# ===== System Prompt 建構 =====
 def build_system_prompt(style: str, profile_type=None) -> str:
-    base_prompt = f"""你是「數學小老師安安」，用繁體中文與學生互動教學。
+    base_prompt = f"""你是「數學小老師翔宇」，用繁體中文與學生互動教學。
 
 🔴🔴🔴 絕對禁止事項 🔴🔴🔴
 1. 禁止使用 $、LaTeX、^、arcsin 等符號

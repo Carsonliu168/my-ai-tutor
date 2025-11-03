@@ -1,9 +1,9 @@
-# reset_admin.py - 自動修復 users 表並重置管理員
+﻿# reset_admin.py - 自動修復 users 表並重置管理員
 import sqlite3, bcrypt, os
 
-DB_PATH = os.path.join("data", "anan.db")
+DB_PATH = os.path.join("data", "xiangyu.db")
 if not os.path.exists(DB_PATH):
-    print("❌ 找不到資料庫 data/anan.db，請確認目前目錄正確。")
+    print("❌ 找不到資料庫 data/xiangyu.db，請確認目前目錄正確。")
     exit()
 
 conn = sqlite3.connect(DB_PATH)
@@ -37,13 +37,13 @@ if "password" not in columns:
     print("✅ 已修復 users 表結構。")
 
 # 刪除舊管理員帳號
-cur.execute("DELETE FROM users WHERE username='anan_admin'")
+cur.execute("DELETE FROM users WHERE username='xiangyu_admin'")
 
 # 建立新密碼
 hashed = bcrypt.hashpw("1234".encode('utf-8'), bcrypt.gensalt())
 cur.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-            ('anan_admin', hashed, 'admin'))
+            ('xiangyu_admin', hashed, 'admin'))
 
 conn.commit()
 conn.close()
-print("✅ 已重置管理員帳號：anan_admin / 密碼 1234")
+print("✅ 已重置管理員帳號：xiangyu_admin / 密碼 1234")
