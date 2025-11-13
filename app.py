@@ -979,10 +979,8 @@ def analyze_image():
                     "model": "gpt-4o-mini",
                     "messages": [
                         {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。", profile_type)},
+                        
                         {
-                            "role": "user",
-                            "content": [
-                                {
                             "role": "user",
                             "content": [
                                 {
