@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🧠 測驗結果｜大腦探險家</title>
+  <title>🧠 測驗結果｜翔宇學習傾向量表</title>
   <style>
     body {
       font-family: "Microsoft JhengHei", sans-serif;
@@ -22,7 +22,7 @@
       padding: 40px 60px;
       border-radius: 20px;
       box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-      max-width: 600px;
+      max-width: 700px;
       width: 100%;
     }
     h1 {
@@ -31,14 +31,54 @@
       font-size: 28px;
     }
     h2 {
-      color: #ff6699;
+      color: #667eea;
       margin-top: 0;
-      font-size: 24px;
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+    .result-icon {
+      font-size: 4em;
+      margin: 20px 0;
     }
     p {
       font-size: 18px;
       color: #333;
-      line-height: 1.6;
+      line-height: 1.8;
+      text-align: left;
+      margin: 20px 0;
+    }
+    .description-box {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+      border-left: 4px solid #667eea;
+    }
+    .features {
+      text-align: left;
+      margin: 20px 0;
+    }
+    .features h3 {
+      color: #667eea;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+    .features ul {
+      list-style: none;
+      padding: 0;
+    }
+    .features li {
+      padding: 8px 0;
+      padding-left: 30px;
+      position: relative;
+    }
+    .features li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #667eea;
+      font-weight: bold;
+      font-size: 20px;
     }
     a {
       display: inline-block;
@@ -46,12 +86,15 @@
       text-decoration: none;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #fff;
-      padding: 12px 30px;
-      border-radius: 10px;
+      padding: 15px 40px;
+      border-radius: 50px;
       font-size: 18px;
       transition: transform 0.2s;
+      font-weight: bold;
     }
-    a:hover { transform: translateY(-2px); }
+    a:hover { 
+      transform: translateY(-3px) scale(1.05); 
+    }
     footer {
       text-align: center;
       color: #eee;
@@ -59,17 +102,115 @@
       margin-top: 40px;
       line-height: 1.4;
     }
+    .retake-link {
+      display: inline-block;
+      margin-top: 15px;
+      margin-left: 15px;
+      text-decoration: none;
+      background: #f8f9fa;
+      color: #333;
+      padding: 15px 40px;
+      border-radius: 50px;
+      font-size: 18px;
+      transition: all 0.2s;
+      font-weight: bold;
+    }
+    .retake-link:hover {
+      background: #e9ecef;
+      transform: translateY(-3px) scale(1.05);
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🧠 測驗完成！</h1>
-    <h2>{{ result }}</h2>
-    <p>{{ description }}</p>
-    <a href="/">回到翔宇主頁開始學習</a>
+    <h1>🎯 測驗完成！</h1>
+    
+    {% if result == "分析導航者" %}
+      <div class="result-icon">🧩</div>
+      <h2>{{ result }}</h2>
+      <div class="description-box">
+        <p><strong>你的思考特質：</strong></p>
+        <p>{{ description }}</p>
+      </div>
+      <div class="features">
+        <h3>📚 最適合的學習方式：</h3>
+        <ul>
+          <li>循序漸進的講解與筆記式複習</li>
+          <li>條理化的解題步驟和公式推導</li>
+          <li>結構化的知識體系建構</li>
+          <li>邏輯清晰的文字說明</li>
+        </ul>
+      </div>
+      <div class="features">
+        <h3>💡 翔宇會這樣教你：</h3>
+        <ul>
+          <li>提供清晰的步驟編號和邏輯推理</li>
+          <li>強調公式背後的數學原理</li>
+          <li>使用條列式的重點整理</li>
+          <li>減少過多的圖像和比喻</li>
+        </ul>
+      </div>
+    
+    {% elif result == "視覺實作家" %}
+      <div class="result-icon">🎯</div>
+      <h2>{{ result }}</h2>
+      <div class="description-box">
+        <p><strong>你的思考特質：</strong></p>
+        <p>{{ description }}</p>
+      </div>
+      <div class="features">
+        <h3>📚 最適合的學習方式：</h3>
+        <ul>
+          <li>以題帶概念、從實作中學習</li>
+          <li>圖像化的解題思路和示意圖</li>
+          <li>動手操作和視覺化工具</li>
+          <li>生動的比喻和實例說明</li>
+        </ul>
+      </div>
+      <div class="features">
+        <h3>💡 翔宇會這樣教你：</h3>
+        <ul>
+          <li>提供豐富的圖形和流程圖</li>
+          <li>使用生活化的例子和比喻</li>
+          <li>強調整體感覺和直覺理解</li>
+          <li>讓你先動手試、再理解原理</li>
+        </ul>
+      </div>
+    
+    {% else %}
+      <div class="result-icon">⚙️</div>
+      <h2>{{ result }}</h2>
+      <div class="description-box">
+        <p><strong>你的思考特質：</strong></p>
+        <p>{{ description }}</p>
+      </div>
+      <div class="features">
+        <h3>📚 最適合的學習方式：</h3>
+        <ul>
+          <li>混合式學習：圖文並進、交錯練習</li>
+          <li>靈活切換邏輯分析和視覺想像</li>
+          <li>整合多種學習資源和方法</li>
+          <li>根據不同題型調整策略</li>
+        </ul>
+      </div>
+      <div class="features">
+        <h3>💡 翔宇會這樣教你：</h3>
+        <ul>
+          <li>同時提供邏輯推理和視覺化工具</li>
+          <li>結合文字說明和圖像示意</li>
+          <li>讓你自由選擇最適合的理解方式</li>
+          <li>培養多角度思考的能力</li>
+        </ul>
+      </div>
+    {% endif %}
+    
+    <div style="margin-top: 30px;">
+      <a href="/">開始與翔宇學習</a>
+      <a href="/reset_questionnaire" class="retake-link">重新測驗</a>
+    </div>
   </div>
   <footer>
-    🧮 數學小老師翔宇 v4.8.7 ｜ © 2025 WeShareAI  
+    🧮 數學小老師翔宇 v4.9.15 ｜ © 2025 WeShareAI  
     <div>登入狀態：{{ username or '未登入' }} ｜ 角色：{{ role or 'student' }}</div>
   </footer>
 </body>

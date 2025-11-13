@@ -236,12 +236,12 @@ def build_system_prompt(style: str, profile_type=None) -> str:
 """
 
     # ===== 根據學習風格添加專屬指示 =====
-    if profile_type == "邏輯戰略家":
-        base_prompt += "\n特殊要求：極簡風格、不用 emoji、直接給公式和步驟。"
-    elif profile_type == "創意視覺家":
-        base_prompt += "\n特殊要求：多用 emoji 和生動比喻、讓學生有畫面。"
-    elif profile_type == "平衡大師":
-        base_prompt += "\n特殊要求：結構化呈現、清楚但不冗長。"
+    if profile_type == "分析導航者":
+        base_prompt += "\n特殊要求：極簡風格、不用 emoji、直接給公式和步驟，強調邏輯推理。"
+    elif profile_type == "視覺實作家":
+        base_prompt += "\n特殊要求：多用 emoji 和生動比喻、圖像化說明、讓學生有畫面。"
+    elif profile_type == "雙核整合者":
+        base_prompt += "\n特殊要求：結構化呈現、圖文並重、清楚但不冗長。"
     
     return base_prompt
 
@@ -536,15 +536,37 @@ def submit_questionnaire():
     if not answers or len(answers) != 7:
         return jsonify({"success": False, "error": "答案格式錯誤"})
     
-    a_count = answers.count("A")
-    b_count = answers.count("B")
+    # 🆕 新的計分邏輯：根據左腦/右腦取向計分
+    # 題目1: A=右腦(-1), B=左腦(+1)
+    # 題目2: A=左腦(+1), B=右腦(-1)
+    # 題目3: A=左腦(+1), B=右腦(-1)
+    # 題目4: A=右腦(-1), B=左腦(+1)
+    # 題目5: A=右腦(-1), B=左腦(+1)
+    # 題目6: A=右腦(-1), B=左腦(+1)
+    # 題目7: A=左腦(+1), B=右腦(-1)
     
-    if a_count - b_count >= 3:
-        profile_type = "邏輯戰略家"
-    elif b_count - a_count >= 3:
-        profile_type = "創意視覺家"
+    score_map = [
+        {"A": -1, "B": 1},  # 題目1
+        {"A": 1, "B": -1},  # 題目2
+        {"A": 1, "B": -1},  # 題目3
+        {"A": -1, "B": 1},  # 題目4
+        {"A": -1, "B": 1},  # 題目5
+        {"A": -1, "B": 1},  # 題目6
+        {"A": 1, "B": -1},  # 題目7
+    ]
+    
+    total_score = 0
+    for i, answer in enumerate(answers):
+        if answer in score_map[i]:
+            total_score += score_map[i][answer]
+    
+    # 根據總分判斷類型
+    if total_score >= 3:
+        profile_type = "分析導航者"  # 左腦優勢
+    elif total_score <= -3:
+        profile_type = "視覺實作家"  # 右腦優勢
     else:
-        profile_type = "平衡大師"
+        profile_type = "雙核整合者"  # 平衡型
     
     username = session.get("user")
     conn = sqlite3.connect(DB_PATH)
@@ -552,6 +574,8 @@ def submit_questionnaire():
     c.execute("UPDATE users SET profile_type=? WHERE username=?", (profile_type, username))
     conn.commit()
     conn.close()
+    
+    print(f"✅ {username} 完成問卷，總分: {total_score}，類型: {profile_type}")
     
     return jsonify({"success": True, "result": profile_type})
 
@@ -562,9 +586,9 @@ def questionnaire_result():
     
     result = request.args.get("result", "未知類型")
     descriptions = {
-        "邏輯戰略家": "你擅長以條理與策略解決問題，喜歡從全局推理出答案，是理性與分析的高手。",
-        "創意視覺家": "你具有豐富的想像力與整體感知力，習慣用圖像、感覺和關聯去理解知識。",
-        "平衡大師": "你能靈活切換邏輯與直覺的思維，能在不同學習情境中找到最適合的方式。"
+        "分析導航者": "思考有條理、善於歸納與組織。適合循序漸進的講解與筆記式複習。",
+        "視覺實作家": "偏好圖像、操作與實作學習。適合以題帶概念、以圖輔助的教學方式。",
+        "雙核整合者": "左右腦兼具，能同時分析與感覺。建議混合式學習：圖文並進、交錯練習。"
     }
     description = descriptions.get(result, "每個人都有不同的思考方式，這是你獨特的優勢！")
     username = session.get("user", "未知使用者")
