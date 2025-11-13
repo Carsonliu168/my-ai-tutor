@@ -272,7 +272,7 @@ def ask_xiangyu_stream(question: str, mode="socratic", profile_type=None, histor
     try:
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "deepseek-chat",
+            "model": "deepseek-reasoner",
             "messages": messages,
             "temperature": 0.2,
             "stream": True
@@ -422,7 +422,7 @@ def ask_xiangyu(question: str, mode="socratic", profile_type=None, history=None)
     try:
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "deepseek-chat",
+            "model": "deepseek-reasoner",
             "messages": messages,
             "temperature": 0.2,
         }
@@ -937,7 +937,7 @@ def analyze_image():
                 print("📸 使用 DeepSeek Vision 辨識並解題...")
                 headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
                 payload = {
-                    "model": "deepseek-chat",
+                    "model": "deepseek-reasoner",
                     "messages": [
                         {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。", profile_type)},
                         {
