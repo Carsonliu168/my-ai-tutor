@@ -207,12 +207,19 @@ def build_system_prompt(style: str, profile_type=None) -> str:
 答案
 
 教學原則：
-- 溫柔、親切、鼓勵、活潑
+- 溫柔、親切、耐心
 - {style}
 - 多用台灣生活例子（珍奶、雞排等）
 - 直接回答問題，不要過度延伸
 - 禁止開場寒暄或自我介紹
 - 禁止主動出題
+
+⚠️ 回答態度：
+- 只回答問題,不要主動誇獎學生
+- 等學生說「懂了」「明白了」才給予鼓勵
+- 不要假設學生已經理解
+- 遇到複雜的多層對數運算或進階題目,請誠實告知:
+  「這題計算比較複雜,我的答案可能不夠準確。建議你用計算機驗證,或問老師確認步驟喔!」
 
 數學符號規範：
 - 使用 ×（乘）、÷（除）、=（等於）
@@ -272,7 +279,7 @@ def ask_xiangyu_stream(question: str, mode="socratic", profile_type=None, histor
     try:
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "deepseek-reasoner",
+            "model": "deepseek-chat",
             "messages": messages,
             "temperature": 0.2,
             "stream": True
@@ -422,7 +429,7 @@ def ask_xiangyu(question: str, mode="socratic", profile_type=None, history=None)
     try:
         headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "deepseek-reasoner",
+            "model": "deepseek-chat",
             "messages": messages,
             "temperature": 0.2,
         }
@@ -937,7 +944,7 @@ def analyze_image():
                 print("📸 使用 DeepSeek Vision 辨識並解題...")
                 headers = {"Authorization": f"Bearer {deepseek_api_key}", "Content-Type": "application/json"}
                 payload = {
-                    "model": "deepseek-reasoner",
+                    "model": "deepseek-chat",
                     "messages": [
                         {"role": "system", "content": build_system_prompt("請用清楚步驟直接講解完整解法。", profile_type)},
                         {
