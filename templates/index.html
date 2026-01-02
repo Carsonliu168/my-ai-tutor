@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🧮 數學小老師翔宇</title>
+  <title>🧮 解題小幫手</title>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <style>
     body {
@@ -48,7 +48,7 @@
       display: flex;
       flex-direction: column;
     }
-    /* 🎨 翔宇的訊息泡泡 */
+    /* 🎨 解題小幫手的訊息泡泡 */
     .xiangyu {
       background: linear-gradient(135deg, #ffe6ec 0%, #ffd4e0 100%);
       color: #333;
@@ -60,7 +60,7 @@
       box-shadow: 0 2px 8px rgba(255,182,193,0.3);
       line-height: 1.6;
     }
-    /* 🆕 翔宇訊息內的列表樣式 */
+    /* 🆕 解題小幫手訊息內的列表樣式 */
     .xiangyu ul {
       margin: 10px 0;
       padding-left: 20px;
@@ -200,7 +200,7 @@
   </style>
 </head>
 <body>
-  <header>🧮 數學小老師翔宇</header>
+  <header>🧮 解題小幫手</header>
   <div class="container">
     <div id="chat-box"></div>
     <form id="chat-form">
@@ -213,11 +213,11 @@
       <button onclick="document.getElementById('image-upload').click()">上傳圖片題</button>
       <button onclick="fetch('/clear').then(()=>location.reload())">清除紀錄</button>
     </div>
-    <div id="loading-text">翔宇正在思考中...</div>
+    <div id="loading-text">解題小幫手正在思考中...</div>
     <input type="file" id="image-upload" accept="image/*" style="display: none;" />
   </div>
   <footer>
-    🧮 數學小老師翔宇 v5.4.1 ｜ © 2025 WeShareAI  
+    🧮 解題小幫手 v5.4.1 ｜ © 2025 WeShareAI  
     <div>登入狀態：{{ username or '未登入' }} ｜ 角色：{{ role or 'student' }}</div>
   </footer>
   <script src="/static/script.js?v=541"></script>

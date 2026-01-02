@@ -1,5 +1,5 @@
 // ================================================
-// 📘 安安專案前端控制腳本
+// 📘 解題小幫手專案前端控制腳本
 // v5.4.4：修復步驟編號格式問題
 // ================================================
 
@@ -130,8 +130,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function streamChat(message) {
     return new Promise((resolve, reject) => {
       // 創建串流訊息容器
-      const thinkingMsg = createStreamMessage("anan");
-      thinkingMsg.innerHTML = "🤔 安安思考中...";
+      const thinkingMsg = createStreamMessage("xiangyu");
+      thinkingMsg.innerHTML = "🤔 解題小幫手思考中...";
       
       let fullReply = "";
       let hasStarted = false;
@@ -266,8 +266,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 🆕 步驟 2：顯示思考中
       const thinkingMsg = document.createElement("div");
-      thinkingMsg.className = "anan";
-      thinkingMsg.innerHTML = "🤔 安安正在辨識圖片...";
+      thinkingMsg.className = "xiangyu";
+      thinkingMsg.innerHTML = "🤔 解題小幫手正在辨識圖片...";
       thinkingMsg.id = "thinking-upload";
       chatBox.appendChild(thinkingMsg);
       chatBox.scrollTop = chatBox.scrollHeight;
@@ -289,13 +289,13 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("thinking-upload")?.remove();
 
         // 顯示 AI 回應
-        appendMessage("anan", data.reply || "⚠️ 圖片辨識失敗。");
+        appendMessage("xiangyu", data.reply || "⚠️ 圖片辨識失敗。");
         
       } catch (err) {
         console.error("圖片上傳失敗:", err);
         loadingText.style.display = "none";
         document.getElementById("thinking-upload")?.remove();
-        appendMessage("anan", "⚠️ 圖片上傳或辨識失敗，請重試。");
+        appendMessage("xiangyu", "⚠️ 圖片上傳或辨識失敗，請重試。");
       }
     };
 

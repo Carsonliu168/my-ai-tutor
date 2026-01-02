@@ -1,5 +1,5 @@
 ﻿# ================================
-# 📘 數學小老師翔宇主程式 app.py
+# 📘 解題小幫手主程式 app.py
 # v4.9.10 Debug 版 (加入串流 debug + 優化 Prompt)
 # ================================
 
@@ -56,10 +56,10 @@ def check_password(plain: str, hashed: bytes | str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed)
 
 # ===== 內建預設帳號 =====
-ADMIN_USER = os.getenv("ADMIN_USER", "anan_admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "Carson@2025")
 DEMO_USER  = os.getenv("DEMO_USER", "demo_user")
-DEMO_PASS  = os.getenv("DEMO_PASS", "demo123")
+DEMO_PASS  = os.getenv("DEMO_PASS", "carson1234")
 
 def seed_accounts():
     conn = sqlite3.connect(DB_PATH)
@@ -82,7 +82,7 @@ def seed_accounts():
     conn.commit(); conn.close()
 
 seed_accounts()
-print("✅ [翔宇] 資料庫就緒（v4.9.15 DeepSeek Vision 版 - 圖片辨識改用 DeepSeek）")
+print("✅ [解題小幫手] 資料庫就緒（v4.9.15 DeepSeek Vision 版 - 圖片辨識改用 DeepSeek）")
 
 # ===== 🆕 自動分段函數 =====
 def auto_add_paragraphs(text: str) -> str:
@@ -150,7 +150,7 @@ def format_ai_reply(text: str) -> str:
 
 # ===== System Prompt 建構 =====
 def build_system_prompt(style: str, profile_type=None) -> str:
-    base_prompt = f"""你是「數學小老師翔宇」，用繁體中文與學生互動教學。
+    base_prompt = f"""你是「解題小幫手」，用繁體中文與學生互動教學。
 
 ⚠️⚠️⚠️ 超級重要：絕對禁止使用的符號 ⚠️⚠️⚠️
 
@@ -400,7 +400,7 @@ def ask_xiangyu_stream(question: str, mode="socratic", profile_type=None, histor
                 
         except Exception as e2:
             print(f"OpenAI 備援失敗: {e2}")
-            yield "[ERROR]翔宇暫時無法回應，請稍後再試。"
+            yield "[ERROR]解題小幫手暫時無法回應，請稍後再試。"
             return ""
 
 # ===== 非串流版本：ask_xiangyu (保留作為備援) =====
@@ -461,7 +461,7 @@ def ask_xiangyu(question: str, mode="socratic", profile_type=None, history=None)
     except Exception as e:
         print("OpenAI 備援失敗:", e)
 
-    return "（翔宇暫時沒回應，請稍後再試一次）"
+    return "（解題小幫手暫時沒回應，請稍後再試一次）"
 
 # ===== 登入 / 登出 =====
 @app.route("/login", methods=["GET", "POST"])
@@ -660,7 +660,7 @@ def stream_chat():
         
         reply = random.choice([
             "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
-            "翔宇老師為你鼓掌 👏 有新的題目要挑戰嗎？",
+            "解題小幫手為你鼓掌 👏 有新的題目要挑戰嗎？",
             "很好～你已經掌握這個觀念了！繼續加油 💪",
             "非常好！有其他問題隨時可以問我喔～"
         ])
@@ -688,7 +688,7 @@ def stream_chat():
             elif confusion_count == 2:
                 followup = f"學生第二次說他還是不懂這個問題：「{current_problem}」，請再用不同方式簡短解釋，語氣更鼓勵。"
             else:
-                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，翔宇為你加油 💪"
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，解題小幫手為你加油 💪"
                 
                 def simple_stream():
                     yield f"data: {reply}\n\n"
@@ -816,7 +816,7 @@ def home():
     if "懂了" in msg or "明白" in msg or "了解" in msg:
         reply = random.choice([
             "太棒了！你真的很努力 👍 還有其他數學問題想問我嗎？",
-            "翔宇老師為你鼓掌 👏 有新的題目要挑戰嗎？",
+            "解題小幫手為你鼓掌 👏 有新的題目要挑戰嗎？",
             "很好～你已經掌握這個觀念了！繼續加油 💪",
             "非常好！有其他問題隨時可以問我喔～"
         ])
@@ -836,7 +836,7 @@ def home():
             elif confusion_count == 2:
                 followup = "學生第二次說他還是不懂，請再用不同方式簡短解釋，語氣更鼓勵。"
             else:
-                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，翔宇為你加油 💪"
+                reply = "沒關係～學習本來就是一步步來！這題你可以先記下來，明天拿去問老師，解題小幫手為你加油 💪"
                 return jsonify({"reply": reply})
             
             reply = ask_xiangyu(followup, mode="direct", profile_type=profile_type, history=session["chat_history"])
@@ -1060,7 +1060,7 @@ def analyze_image():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     print("=" * 60)
-    print("🚀 翔宇 v4.9.15 DeepSeek Vision 版啟動完成")
+    print("🚀 解題小幫手 v4.9.15 DeepSeek Vision 版啟動完成")
     print("=" * 60)
     print("📸 圖片辨識：DeepSeek Vision API (OpenAI Vision 備援)")
     print("🎯 教學風格：邏輯戰略家 / 創意視覺家 / 平衡大師")
